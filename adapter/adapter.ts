@@ -115,9 +115,19 @@ class HighFidelityAdapter {
 
     this.gridWs = new WebSocket(gridUrl);
 
+    this.gridWs.on('open', () => {
+      console.log('✅ [ADAPTER] Connected to GRID Live Data Feed');
+    });
+
     this.gridWs.on('message', (data) => {
       const tx = JSON.parse(data.toString()) as GridTransaction;
+      console.log(`📡 [ADAPTER] Incoming Transaction: ${tx.id} | Type: ${tx.type || tx.action}`);
       this.processTransaction(tx);
+    });
+
+    this.gridWs.on('close', (code, reason) => {
+      console.log(`🔌 [ADAPTER] GRID Connection Closed (${code}): ${reason}`);
+      setTimeout(() => this.connectToGrid(), 5000);
     });
 
     this.gridWs.on('error', (e) => {
