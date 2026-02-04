@@ -5,22 +5,33 @@ import {
   TrendingUp, 
   TrendingDown, 
   ShieldCheck, 
-  UserCheck, 
-  Zap, 
   Activity,
   History,
-  LayoutDashboard
+  LayoutDashboard,
+  Timer,
+  Info,
+  ChevronRight,
+  ArrowUpRight,
+  ArrowDownRight
 } from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
 
 export default function Dashboard() {
   const [mounted, setMounted] = useState(false);
   const [gameState, setGameState] = useState({
-    round: 1,
-    t_score: 0,
-    ct_score: 0,
-    bomb: false,
-    last_action: "Waiting for Match..."
+    round: 14,
+    t_score: 8,
+    ct_score: 5,
+    bomb: true,
+    last_action: "Bomb Planted (Site A)"
   });
+  
+  const [markets, setMarkets] = useState([
+    { id: "series_winner", title: "Match Winner", yes: 64, no: 36, volume: "128k" },
+    { id: "r15_winner", title: "Round 15 Winner", yes: 52, no: 48, volume: "12k" },
+    { id: "bomb_prop", title: "Bomb Planted in Round 15?", yes: 31, no: 69, volume: "5k" }
+  ]);
+
   const [matches, setMatches] = useState<any[]>([]);
 
   useEffect(() => {
@@ -40,6 +51,9 @@ export default function Dashboard() {
           bomb: data.payload.game_state.bomb_planted,
           last_action: data.payload.last_action
         });
+        if (data.payload.markets) {
+          setMarkets(data.payload.markets);
+        }
       } else if (data.type === "match_occurred") {
         setMatches(prev => [data.payload, ...prev].slice(0, 5));
       }
@@ -51,224 +65,233 @@ export default function Dashboard() {
   if (!mounted) return null;
 
   return (
-    <div className="min-h-screen bg-[#0a0a0a] text-zinc-100 font-sans selection:bg-cyan-500/30">
-      {/* Dynamic Background */}
-      <div className="fixed inset-0 pointer-events-none overflow-hidden">
-        <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-cyan-500/10 blur-[120px] rounded-full" />
-        <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-violet-600/10 blur-[120px] rounded-full" />
-      </div>
-
-      <div className="relative z-10 max-w-7xl mx-auto px-6 py-8">
-        {/* Header */}
-        <header className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-12 animate-in fade-in slide-in-from-top-4 duration-700">
-          <div>
-            <div className="flex items-center gap-3 mb-2">
-              <div className="p-2 bg-gradient-to-br from-cyan-400 to-violet-600 rounded-xl shadow-lg shadow-cyan-500/20">
-                <LayoutDashboard className="w-6 h-6 text-white" />
-              </div>
-              <h1 className="text-3xl font-extrabold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-white to-zinc-500">
-                Information Finance
-              </h1>
+    <div className="min-h-screen bg-black text-white selection:bg-blue-500/30">
+      {/* Navigation */}
+      <nav className="border-b border-white/5 bg-black/50 backdrop-blur-md sticky top-0 z-50">
+        <div className="max-w-[1600px] mx-auto px-6 h-16 flex items-center justify-between">
+          <div className="flex items-center gap-8">
+            <div className="flex items-center gap-2">
+              <div className="w-8 h-8 bg-[#00D991] rounded-lg flex items-center justify-center font-black text-black">IF</div>
+              <span className="text-xl font-bold tracking-tight">Information Finance</span>
             </div>
-            <p className="text-zinc-500 font-medium">CS2 Real-time Infrastructure • GRID Telemetry v1</p>
-          </div>
-
-          <div className="flex flex-wrap items-center gap-4">
-            <div className="flex items-center gap-2 px-4 py-2 bg-zinc-900/50 border border-zinc-800 rounded-full group hover:border-cyan-500/50 transition-colors">
-              <div className="w-2 h-2 bg-cyan-400 rounded-full animate-pulse shadow-[0_0_8px_rgba(34,211,238,0.8)]" />
-              <span className="text-sm font-semibold text-zinc-300">GeoComply Active</span>
-            </div>
-            <div className="flex items-center gap-2 px-4 py-2 bg-zinc-900/50 border border-zinc-800 rounded-full group hover:border-violet-500/50 transition-colors">
-              <div className="w-2 h-2 bg-violet-500 rounded-full shadow-[0_0_8px_rgba(139,92,246,0.8)]" />
-              <span className="text-sm font-semibold text-zinc-300">Persona Verified</span>
+            <div className="hidden md:flex items-center gap-6 text-sm font-medium text-zinc-400">
+              <a href="#" className="text-white border-b-2 border-[#00D991] h-16 flex items-center">Markets</a>
+              <a href="#" className="hover:text-white transition-colors h-16 flex items-center">Portfolio</a>
+              <a href="#" className="hover:text-white transition-colors h-16 flex items-center">Activity</a>
             </div>
           </div>
-        </header>
-
-        <main className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-          {/* Match State Card */}
-          <div className="lg:col-span-8 flex flex-col gap-8">
-            <section className="bg-zinc-900/40 backdrop-blur-xl border border-white/5 rounded-3xl p-8 shadow-2xl relative overflow-hidden group">
-              <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
-                <Activity className="w-32 h-32 text-cyan-500" />
-              </div>
-
-              <div className="relative z-10">
-                <div className="flex items-center justify-between mb-8">
-                  <div className="flex items-center gap-3">
-                    <span className="px-3 py-1 bg-cyan-500/10 text-cyan-400 text-xs font-bold tracking-widest uppercase rounded-lg border border-cyan-500/20">
-                      Live Series
-                    </span>
-                    <span className="text-zinc-500 text-sm font-medium">ID: {gameState.last_action}</span>
-                  </div>
-                  <div className="text-right">
-                    <div className="text-xs uppercase tracking-widest text-zinc-500 font-bold mb-1">Round</div>
-                    <div className="text-2xl font-black text-white">{gameState.round}</div>
-                  </div>
-                </div>
-
-                <div className="flex items-center justify-center gap-16 mb-12">
-                  <div className="text-center group/team">
-                    <div className="w-20 h-20 bg-zinc-800 rounded-2xl flex items-center justify-center mb-4 border border-zinc-700 group-hover/team:border-cyan-500/50 transition-colors">
-                      <span className="text-3xl font-black text-cyan-400">T</span>
-                    </div>
-                    <div className="text-5xl font-black text-white mb-2">{gameState.t_score}</div>
-                    <div className="text-xs font-bold text-zinc-500 uppercase tracking-widest">Terrorists</div>
-                  </div>
-
-                  <div className="flex flex-col items-center gap-4">
-                    <div className="h-px w-24 bg-gradient-to-r from-transparent via-zinc-700 to-transparent" />
-                    <div className="px-6 py-2 bg-zinc-800/50 rounded-full border border-zinc-700">
-                      <span className="text-lg font-bold text-zinc-300">VS</span>
-                    </div>
-                    <div className="h-px w-24 bg-gradient-to-r from-transparent via-zinc-700 to-transparent" />
-                  </div>
-
-                  <div className="text-center group/team">
-                    <div className="w-20 h-20 bg-zinc-800 rounded-2xl flex items-center justify-center mb-4 border border-zinc-700 group-hover/team:border-violet-500/50 transition-colors">
-                      <span className="text-3xl font-black text-violet-400">CT</span>
-                    </div>
-                    <div className="text-5xl font-black text-white mb-2">{gameState.ct_score}</div>
-                    <div className="text-xs font-bold text-zinc-500 uppercase tracking-widest">Counter-Ts</div>
-                  </div>
-                </div>
-
-                {/* Kinetic Progress Bar */}
-                <div className="relative h-4 bg-zinc-800/50 rounded-full overflow-hidden border border-white/5">
-                  <div 
-                    className="absolute inset-y-0 left-0 bg-gradient-to-r from-cyan-400 to-cyan-600 shadow-[0_0_15px_rgba(34,211,238,0.5)] transition-all duration-1000 ease-out"
-                    style={{ width: `${(gameState.t_score / (gameState.t_score + gameState.ct_score || 1)) * 100}%` }}
-                  />
-                  {gameState.bomb && (
-                    <div className="absolute inset-0 bg-red-500/20 animate-pulse flex items-center justify-center">
-                      <span className="text-[10px] font-black tracking-tighter text-red-500 uppercase">Bomb Planted</span>
-                    </div>
-                  )}
-                </div>
-              </div>
-            </section>
-
-            {/* Order Book Grid */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-              <section className="bg-zinc-900/40 backdrop-blur-xl border border-white/5 rounded-3xl p-6">
-                <div className="flex items-center gap-2 mb-6">
-                  <TrendingUp className="w-5 h-5 text-cyan-400" />
-                  <h3 className="text-lg font-bold text-white">Market YES</h3>
-                </div>
-                <div className="space-y-2">
-                  <div className="flex justify-between text-[10px] font-bold text-zinc-500 uppercase tracking-widest px-2 mb-2">
-                    <span>Price</span>
-                    <span>Liquidity</span>
-                  </div>
-                  {[64, 62, 59, 57].map((p, i) => (
-                    <div key={i} className="flex justify-between items-center p-3 bg-zinc-800/30 rounded-xl hover:bg-zinc-800/50 transition-colors border border-transparent hover:border-cyan-500/20">
-                      <span className="text-cyan-400 font-black">${p}</span>
-                      <span className="text-zinc-400 font-medium">{(1.2 * (i+1)).toFixed(1)}k</span>
-                    </div>
-                  ))}
-                </div>
-              </section>
-
-              <section className="bg-zinc-900/40 backdrop-blur-xl border border-white/5 rounded-3xl p-6">
-                <div className="flex items-center gap-2 mb-6">
-                  <TrendingDown className="w-5 h-5 text-violet-400" />
-                  <h3 className="text-lg font-bold text-white">Market NO</h3>
-                </div>
-                <div className="space-y-2">
-                  <div className="flex justify-between text-[10px] font-bold text-zinc-500 uppercase tracking-widest px-2 mb-2">
-                    <span>Price</span>
-                    <span>Liquidity</span>
-                  </div>
-                  {[36, 38, 41, 43].map((p, i) => (
-                    <div key={i} className="flex justify-between items-center p-3 bg-zinc-800/30 rounded-xl hover:bg-zinc-800/50 transition-colors border border-transparent hover:border-violet-500/20">
-                      <span className="text-violet-400 font-black">${p}</span>
-                      <span className="text-zinc-400 font-medium">{(0.8 * (i+1)).toFixed(1)}k</span>
-                    </div>
-                  ))}
-                </div>
-              </section>
-            </div>
+          <div className="flex items-center gap-4">
+             <div className="flex items-center gap-2 px-3 py-1.5 bg-zinc-900 border border-white/5 rounded-full text-[11px] font-bold text-zinc-400">
+               <div className="w-2 h-2 bg-[#00D991] rounded-full animate-pulse" />
+               GEOCOMPLY: OK
+             </div>
+             <div className="w-8 h-8 bg-zinc-800 rounded-full border border-white/10" />
           </div>
+        </div>
+      </nav>
 
-          {/* Trade Execution Panel */}
-          <div className="lg:col-span-4 flex flex-col gap-8">
-            <section className="bg-zinc-900/40 backdrop-blur-xl border border-white/5 rounded-3xl p-8 relative overflow-hidden">
-               <div className="absolute top-0 right-0 p-4 opacity-5">
-                <Zap className="w-20 h-20 text-yellow-400" />
-              </div>
-
-              <h3 className="text-xl font-bold text-white mb-8 flex items-center gap-2">
-                <Zap className="w-5 h-5 text-yellow-500" />
-                Quick Trade
-              </h3>
-
-              <div className="space-y-6">
-                <div className="flex p-1 bg-zinc-800/50 rounded-2xl border border-white/5">
-                  <button className="flex-1 py-3 px-4 bg-cyan-500 text-white font-black rounded-xl shadow-lg shadow-cyan-500/20 transition-all hover:scale-[1.02]">
-                    YES
-                  </button>
-                  <button className="flex-1 py-3 px-4 text-zinc-500 font-black hover:text-white transition-colors">
-                    NO
-                  </button>
-                </div>
-
-                <div className="space-y-2">
-                  <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest px-2">Contract Size</label>
-                  <div className="relative">
-                    <input 
-                      type="number" 
-                      placeholder="0.00" 
-                      className="w-full bg-zinc-800/50 border border-white/5 rounded-2xl p-4 text-white font-bold focus:outline-none focus:border-cyan-500/50 transition-colors"
-                    />
-                    <div className="absolute right-4 top-1/2 -translate-y-1/2 text-zinc-500 text-xs font-bold">USD</div>
-                  </div>
-                </div>
-
-                <div className="p-4 bg-cyan-500/5 rounded-2xl border border-cyan-500/10 space-y-3">
-                  <div className="flex justify-between text-xs">
-                    <span className="text-zinc-500 font-medium">Est. Payout</span>
-                    <span className="text-cyan-400 font-bold">$100.00</span>
-                  </div>
-                  <div className="flex justify-between text-xs">
-                    <span className="text-zinc-500 font-medium">VCP Fee (0.1%)</span>
-                    <span className="text-white font-bold">$0.10</span>
-                  </div>
-                </div>
-
-                <button className="w-full py-4 bg-zinc-100 text-black font-black rounded-2xl transition-all hover:bg-white hover:scale-[0.98] active:scale-95 shadow-xl shadow-white/5">
-                  Execute Settlement
-                </button>
-              </div>
-            </section>
-
-            {/* Audit Logs */}
-            <section className="bg-zinc-900/40 backdrop-blur-xl border border-white/5 rounded-3xl p-6 flex-grow">
-               <div className="flex items-center gap-2 mb-6">
-                <History className="w-5 h-5 text-zinc-500" />
-                <h3 className="text-lg font-bold text-white">VeritasChain Log</h3>
-              </div>
-              <div className="space-y-4">
-                {matches.length === 0 ? (
-                   <div className="text-center py-8">
-                   <div className="text-zinc-600 text-xs font-medium italic">Scanning Merkle Trees...</div>
+      <div className="max-w-[1600px] mx-auto px-6 py-8">
+        <div className="grid grid-cols-12 gap-8">
+          
+          {/* Main Content Area */}
+          <main className="col-span-12 lg:col-span-8 space-y-8">
+            
+            {/* Live Score Strip (The 'Data-First' Hero) */}
+            <section className="fintech-card p-6 flex flex-col md:flex-row items-center justify-between gap-8 border-l-4 border-l-[#00D991]">
+               <div className="flex items-center gap-4">
+                 <div className="bg-zinc-900 p-3 rounded-2xl border border-white/5">
+                   <Activity className="w-6 h-6 text-[#00D991]" />
                  </div>
-                ) : (
-                  matches.map((m, idx) => (
-                    <div key={idx} className="p-3 bg-zinc-800/20 rounded-xl border border-white/5 flex items-center justify-between group">
-                      <div>
-                        <div className="text-[10px] font-bold text-cyan-400 uppercase tracking-tighter mb-0.5">MATCH: #{m.taker_order_id}</div>
-                        <div className="text-[9px] font-medium text-zinc-500 font-mono tracking-tighter truncate max-w-[150px]">
-                          0x{Math.random().toString(16).slice(2, 10)}...{Math.random().toString(16).slice(2, 6)}
+                 <div>
+                   <h2 className="text-sm font-bold uppercase tracking-widest text-zinc-500">Live Match</h2>
+                   <div className="text-xl font-black">NAVI vs. Team Liquid</div>
+                 </div>
+               </div>
+
+               <div className="flex items-center gap-12">
+                 <div className="text-center">
+                   <div className="text-[10px] font-bold text-zinc-500 uppercase mb-1">Score</div>
+                   <div className="flex items-center gap-4">
+                     <span className="text-3xl font-black text-[#265CFF]">{gameState.t_score}</span>
+                     <span className="text-zinc-700 font-bold">:</span>
+                     <span className="text-3xl font-black text-[#AA00FF]">{gameState.ct_score}</span>
+                   </div>
+                 </div>
+                 <div className="text-center border-l border-white/5 pl-12">
+                   <div className="text-[10px] font-bold text-zinc-500 uppercase mb-1">Round</div>
+                   <div className="text-2xl font-black">{gameState.round}</div>
+                 </div>
+                 <div className="text-center border-l border-white/5 pl-12">
+                   <div className="text-[10px] font-bold text-zinc-500 uppercase mb-1">Status</div>
+                   <div className="flex items-center gap-2">
+                     {gameState.bomb && <div className="w-2 h-2 bg-red-500 rounded-full animate-ping" />}
+                     <span className={`text-sm font-bold ${gameState.bomb ? 'text-red-500' : 'text-zinc-400'}`}>
+                       {gameState.last_action}
+                     </span>
+                   </div>
+                 </div>
+               </div>
+            </section>
+
+            {/* Markets Grid */}
+            <div className="space-y-6">
+              <div className="flex items-center justify-between">
+                <h3 className="text-lg font-bold">Open Forecasts</h3>
+                <div className="text-xs text-zinc-500 font-medium">Updated 0ms ago</div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {markets.map((m) => (
+                  <motion.div 
+                    key={m.id}
+                    layoutId={m.id}
+                    className="fintech-card overflow-hidden hover:bg-zinc-900/50 cursor-pointer"
+                  >
+                    <div className="p-5">
+                      <div className="flex justify-between items-start mb-4">
+                        <h4 className="font-bold text-white pr-4">{m.title}</h4>
+                        <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest px-2 py-1 bg-white/5 rounded">Vol: {m.volume}</span>
+                      </div>
+                      
+                      <div className="flex gap-2">
+                        <div className="flex-1 flex flex-col gap-1">
+                          <div className="text-[9px] font-bold text-zinc-500 uppercase ml-1">Predict Yes</div>
+                          <button className="w-full py-3 bg-[#265CFF]/10 hover:bg-[#265CFF]/20 border border-[#265CFF]/30 rounded-xl flex items-center justify-between px-4 transition-all">
+                            <span className="text-sm font-bold text-[#265CFF]">YES</span>
+                            <span className="font-black text-white">${m.yes}</span>
+                          </button>
+                        </div>
+                        <div className="flex-1 flex flex-col gap-1">
+                          <div className="text-[9px] font-bold text-zinc-500 uppercase ml-1">Predict No</div>
+                          <button className="w-full py-3 bg-[#AA00FF]/10 hover:bg-[#AA00FF]/20 border border-[#AA00FF]/30 rounded-xl flex items-center justify-between px-4 transition-all">
+                            <span className="text-sm font-bold text-[#AA00FF]">NO</span>
+                            <span className="font-black text-white">${m.no}</span>
+                          </button>
                         </div>
                       </div>
-                      <ShieldCheck className="w-4 h-4 text-emerald-500" />
                     </div>
-                  ))
-                )}
+                    {/* Tiny Depth Indicator */}
+                    <div className="h-1 bg-zinc-800 flex">
+                      <div className="h-full bg-[#265CFF]" style={{ width: `${m.yes}%` }} />
+                      <div className="h-full bg-[#AA00FF]" style={{ width: `${m.no}%` }} />
+                    </div>
+                  </motion.div>
+                ))}
+              </div>
+            </div>
+
+            {/* Verification & Logs Table */}
+            <section className="space-y-4">
+               <h3 className="text-lg font-bold flex items-center gap-2">
+                 <ShieldCheck className="w-5 h-5 text-zinc-500" />
+                 VeritasChain Audit Log
+               </h3>
+               <div className="fintech-card overflow-hidden">
+                 <table className="w-full text-left border-collapse">
+                   <thead>
+                     <tr className="bg-white/2 border-b border-white/5">
+                        <th className="px-6 py-4 text-[10px] font-bold text-zinc-500 uppercase">Event ID</th>
+                        <th className="px-6 py-4 text-[10px] font-bold text-zinc-500 uppercase">Description</th>
+                        <th className="px-6 py-4 text-[10px] font-bold text-zinc-500 uppercase">Timestamp</th>
+                        <th className="px-6 py-4 text-[10px] font-bold text-zinc-500 uppercase">Status</th>
+                     </tr>
+                   </thead>
+                   <tbody className="divide-y divide-white/5">
+                     {[1, 2, 3, 4].map((i) => (
+                       <tr key={i} className="hover:bg-white/2 transition-colors">
+                         <td className="px-6 py-4 text-xs font-mono text-zinc-400">#IF-{(8420 + i)}</td>
+                         <td className="px-6 py-4 text-xs font-medium text-white">Match Executed (Maker: 91, Taker: {100-i})</td>
+                         <td className="px-6 py-4 text-xs text-zinc-500">{new Date().toLocaleTimeString()}</td>
+                         <td className="px-6 py-4">
+                           <span className="px-2 py-1 bg-[#00D991]/10 text-[#00D991] text-[9px] font-bold uppercase rounded border border-[#00D991]/20">Verified</span>
+                         </td>
+                       </tr>
+                     ))}
+                   </tbody>
+                 </table>
+               </div>
+            </section>
+          </main>
+
+          {/* Right Sidebar - Execution & Activity */}
+          <aside className="col-span-12 lg:col-span-4 space-y-8">
+            
+            {/* Terminal Style Execution Panel */}
+            <section className="fintech-card p-6 bg-zinc-900/30">
+              <div className="flex items-center justify-between mb-8">
+                <h3 className="text-sm font-bold uppercase tracking-widest text-[#00D991]">Execution Panel</h3>
+                <Timer className="w-4 h-4 text-zinc-500" />
+              </div>
+
+              <div className="space-y-6">
+                 <div>
+                   <label className="text-[10px] font-bold text-zinc-500 uppercase mb-2 block px-1">Market Selection</label>
+                   <div className="p-3 bg-zinc-800 rounded-xl border border-white/5 flex items-center justify-between">
+                     <span className="text-sm font-bold">Match Winner</span>
+                     <ChevronRight className="w-4 h-4 text-zinc-500" />
+                   </div>
+                 </div>
+
+                 <div className="grid grid-cols-2 gap-2">
+                   <button className="py-3 bg-[#265CFF] text-white font-black rounded-xl shadow-lg shadow-blue-500/10">BUY YES</button>
+                   <button className="py-3 bg-[#AA00FF] text-white font-black rounded-xl">BUY NO</button>
+                 </div>
+
+                 <div className="space-y-2">
+                    <label className="text-[10px] font-bold text-zinc-500 uppercase mb-2 block px-1">Investment (USD)</label>
+                    <div className="relative">
+                      <input 
+                        type="number" 
+                        defaultValue="100.00"
+                        className="w-full bg-zinc-800 border border-white/5 rounded-xl p-4 text-lg font-black focus:outline-none focus:ring-1 focus:ring-[#00D991] transition-all" 
+                      />
+                    </div>
+                 </div>
+
+                 <div className="p-4 bg-zinc-800/50 rounded-xl space-y-3 border border-white/5">
+                   <div className="flex justify-between text-xs">
+                     <span className="text-zinc-500 uppercase font-bold text-[9px]">Est. Payout</span>
+                     <span className="text-[#00D991] font-black tracking-tight">$156.25</span>
+                   </div>
+                   <div className="flex justify-between text-xs">
+                     <span className="text-zinc-500 uppercase font-bold text-[9px]">Implied Probability</span>
+                     <span className="text-white font-bold">64.12%</span>
+                   </div>
+                 </div>
+
+                 <button className="w-full py-4 bg-white text-black font-black rounded-2xl hover:bg-zinc-200 transition-all uppercase tracking-tighter shadow-xl shadow-white/5">
+                   Confirm Order
+                 </button>
               </div>
             </section>
-          </div>
-        </main>
+
+            {/* Global Activity Feed */}
+            <section className="space-y-4 px-2">
+               <h3 className="text-sm font-bold uppercase tracking-widest text-zinc-500">Live Activity</h3>
+               <div className="space-y-6">
+                 {[1, 2, 3].map((i) => (
+                   <div key={i} className="flex gap-4 group cursor-help">
+                     <div className="relative mt-1">
+                       <div className="w-1.5 h-1.5 rounded-full bg-zinc-800 border border-white/10" />
+                       <div className="absolute top-1.5 left-[3px] w-px h-12 bg-zinc-900" />
+                     </div>
+                     <div>
+                        <div className="text-xs font-semibold text-zinc-300 group-hover:text-white transition-colors">
+                          <span className="text-[#265CFF]">User_842</span> predicted <span className="text-[#265CFF]">YES</span>
+                        </div>
+                        <div className="text-[10px] text-zinc-500 mt-1 flex items-center gap-2">
+                          <span>$5.2k Contract</span>
+                          <span>•</span>
+                          <span>{i * 2}m ago</span>
+                        </div>
+                     </div>
+                   </div>
+                 ))}
+               </div>
+            </section>
+
+          </aside>
+        </div>
       </div>
     </div>
   );

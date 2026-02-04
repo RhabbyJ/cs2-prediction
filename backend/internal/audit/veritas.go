@@ -2,6 +2,7 @@ package audit
 
 import (
 	"crypto/sha256"
+	"cs2-prediction-engine/internal/engine"
 	"encoding/hex"
 	"fmt"
 	"sync"
@@ -67,4 +68,10 @@ func (vc *VeritasChain) GetMerkleRoot() string {
 	}
 
 	return tempHashes[0]
+}
+
+// LogMatch is a convenience helper for logging trade executions
+func (vc *VeritasChain) LogMatch(m engine.Match) {
+	data := fmt.Sprintf("MATCH: Maker=%d Taker=%d Price=%d Qty=%d", m.MakerOrderID, m.TakerOrderID, m.Price, m.Quantity)
+	vc.LogEvent(data)
 }

@@ -20,6 +20,7 @@ const (
 
 type Order struct {
 	ID        uint64    `json:"id"`
+	MarketID  string    `json:"market_id"` // E.g., "series_winner", "round_15_winner"
 	UserID    string    `json:"user_id"`
 	Side      Side      `json:"side"`
 	Outcome   Outcome   `json:"outcome"`

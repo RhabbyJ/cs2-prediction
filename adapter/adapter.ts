@@ -38,6 +38,13 @@ interface EngineSeriesEvent {
       ct_score: number;
       last_action?: string;
     };
+    markets?: Array<{
+      id: string;
+      title: string;
+      yes: number;
+      no: number;
+      volume: string;
+    }>;
   };
 }
 
@@ -125,16 +132,14 @@ class HighFidelityAdapter {
 
   private startMockReplay() {
     console.log('🎭 [ADAPTER] Starting "Tryhard" Mock Replay...');
-    let round = 1;
-    let tScore = 0;
-    let ctScore = 0;
+    let round = 14;
+    let tScore = 8;
+    let ctScore = 5;
 
     const sequence = [
       { type: 'round-started', delay: 1000 },
       { type: 'player-killed-player', delay: 3000 },
-      { type: 'player-killed-player', delay: 2000 },
       { type: 'player-planted-bomb', delay: 5000 },
-      { type: 'player-killed-player', delay: 2000 },
       { type: 'bomb-exploded', delay: 10000 },
       { type: 'round-ended', delay: 2000 }
     ];
@@ -149,16 +154,32 @@ class HighFidelityAdapter {
         round++;
       }
 
-      this.processTransaction({
-        id: `mock-${Date.now()}`,
-        type: step.type,
-        timestamp: new Date().toISOString(),
-        seriesState: {
-          games: [{
-            segments: [{ number: round, team1Score: tScore, team2Score: ctScore }]
-          }]
+      // Generate dynamic prop prices
+      const markets = [
+        { id: "series_winner", title: "Match Winner", yes: 60 + (Math.random() * 10), no: 30 + (Math.random() * 10), volume: "128k" },
+        { id: "r15_winner", title: "Round 15 Winner", yes: 50 + (Math.random() * 5), no: 45 + (Math.random() * 5), volume: "12k" },
+        { id: "bomb_prop", title: "Bomb Planted in Round 15?", yes: step.type === 'player-planted-bomb' ? 99 : 20 + (Math.random() * 20), no: step.type === 'player-planted-bomb' ? 1 : 60 + (Math.random() * 20), volume: "5k" }
+      ];
+
+      const event: EngineSeriesEvent = {
+        type: 'game_event',
+        payload: {
+          series_id: this.matchId,
+          event_type: step.type,
+          game_state: {
+            round: round,
+            bomb_planted: step.type === 'player-planted-bomb',
+            terrorist_score: tScore,
+            ct_score: ctScore,
+            last_action: step.type
+          },
+          markets: markets
         }
-      });
+      };
+
+      if (this.engineWs?.readyState === WebSocket.OPEN) {
+        this.engineWs.send(JSON.stringify(event));
+      }
 
       i++;
       setTimeout(run, step.delay);
