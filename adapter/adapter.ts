@@ -1,139 +1,175 @@
 // adapter.ts
-// The "Bridge" between Free GraphQL and Your Engine
+// The "High-Fidelity" Bridge between GRID and Information Finance Engine
 
 import axios from 'axios';
 import { WebSocket } from 'ws';
 
-// 1. The Schema (Commercial Format)
-// Your Engine expects this, but the Free API doesn't give it.
-// We must construct it manually.
-interface SeriesEvent {
-  type: 'series_state';
+/**
+ * Official GRID Series Events Transaction Schema
+ * Format: { actor }-{ action }-{ target }
+ */
+interface GridTransaction {
+  id: string;
+  type: string; // "player-killed-player", "player-planted-bomb", etc
+  timestamp: string;
+  seriesState?: {
+    games: Array<{
+      segments: Array<{
+        number: number;
+        team1Score: number;
+        team2Score: number;
+      }>;
+    }>;
+  };
+}
+
+/**
+ * Normalized Engine Event
+ */
+interface EngineSeriesEvent {
+  type: 'series_state' | 'game_event';
   payload: {
     series_id: string;
+    event_type?: string;
     game_state: {
       round: number;
       bomb_planted: boolean;
       terrorist_score: number;
       ct_score: number;
+      last_action?: string;
     };
   };
 }
 
-// 2. The Free API Query
-// We only get basic stats from Open Access
-const GRAPHQL_QUERY = `
-  query GetMatch($id: ID!) {
-    series(id: $id) {
-      games {
-        segments {
-          number
-          team1Score
-          team2Score
-          isMapFinished
-        }
-      }
-    }
-  }
-`;
-
-/**
- * Adapter class to poll GRID GraphQL and push to the matching engine
- */
-class GridAdapter {
-  private lastRound: number = 0;
+class HighFidelityAdapter {
   private engineWs: WebSocket | null = null;
-  private pollInterval: NodeJS.Timeout | null = null;
+  private gridWs: WebSocket | null = null;
+  private lastState: any = { round: 1, t_score: 0, ct_score: 0, bomb: false };
+  private isMock: boolean = false;
 
   constructor(
-    private matchId: string, 
-    private engineUrl: string, 
+    private matchId: string,
+    private engineUrl: string,
     private apiKey: string
-  ) {}
+  ) {
+    this.isMock = !apiKey || apiKey === 'REPLACE_WITH_YOUR_KEY';
+  }
 
   public async start() {
-    console.log(`🚀 Starting Adapter for Match: ${this.matchId}`);
+    console.log(`🚀 [ADAPTER] Initializing in ${this.isMock ? 'MOCK' : 'LIVE'} mode`);
     this.connectToEngine();
-    
-    // Poll every 2 seconds
-    this.pollInterval = setInterval(() => this.poll(), 2000);
+
+    if (this.isMock) {
+      this.startMockReplay();
+    } else {
+      this.connectToGrid();
+    }
   }
 
   private connectToEngine() {
     this.engineWs = new WebSocket(this.engineUrl);
-    
-    this.engineWs.on('open', () => {
-      console.log('✅ Connected to Matching Engine');
-    });
-
-    this.engineWs.on('error', (err) => {
-      console.error('❌ Engine WebSocket Error:', err.message);
-      // Reconnect logic would go here
-    });
+    this.engineWs.on('open', () => console.log('✅ [ADAPTER] Connected to Matching Engine'));
+    this.engineWs.on('error', (e) => console.error('❌ [ADAPTER] Engine WS Error:', e.message));
+    this.engineWs.on('close', () => setTimeout(() => this.connectToEngine(), 5000));
   }
 
-  private async poll() {
-    try {
-      // A. PULL from Free API
-      const response = await axios.post('https://api.grid.gg/central-data/graphql', {
-        query: GRAPHQL_QUERY,
-        variables: { id: this.matchId }
-      }, { 
-        headers: { 
-          'x-grid-api-key': this.apiKey,
-          'Content-Type': 'application/json'
-        } 
-      });
+  private connectToGrid() {
+    console.log('📡 [ADAPTER] Connecting to GRID Series Events API...');
+    this.gridWs = new WebSocket(`wss://api.grid.gg/series-events/v1/${this.matchId}`, {
+      headers: { 'x-grid-api-key': this.apiKey }
+    });
 
-      const games = response.data?.data?.series?.games;
-      if (!games || games.length === 0) return;
+    this.gridWs.on('message', (data) => {
+      const tx = JSON.parse(data.toString()) as GridTransaction;
+      this.processTransaction(tx);
+    });
 
-      const latestGame = games[0]; 
-      const segments = latestGame.segments;
-      const currentSegment = segments[segments.length - 1]; // Latest round
+    this.gridWs.on('error', (e) => console.error('❌ [ADAPTER] GRID WS Error:', e.message));
+  }
 
-      // B. DETECT CHANGE (Simulate Push)
-      if (currentSegment && currentSegment.number > this.lastRound) {
-        console.log(`⚡ New Round Detected: ${currentSegment.number}`);
-        
-        // C. TRANSFORM to "Commercial Schema"
-        const event: SeriesEvent = {
-          type: 'series_state',
-          payload: {
-            series_id: this.matchId,
-            game_state: {
-              round: currentSegment.number,
-              bomb_planted: false, // Open Access doesn't have this! We assume False.
-              terrorist_score: currentSegment.team1Score,
-              ct_score: currentSegment.team2Score
-            }
-          }
-        };
+  private processTransaction(tx: GridTransaction) {
+    // Extract state from transaction
+    const latestGame = tx.seriesState?.games[0];
+    const latestSegment = latestGame?.segments[latestGame.segments.length - 1];
 
-        // D. PUSH to Engine
-        if (this.engineWs && this.engineWs.readyState === WebSocket.OPEN) {
-          this.engineWs.send(JSON.stringify(event));
-          this.lastRound = currentSegment.number;
-        } else {
-          console.warn('⚠️ Engine not connected. Skipping emission.');
+    const currentRound = latestSegment?.number || this.lastState.round;
+    const tScore = latestSegment?.team1Score || this.lastState.t_score;
+    const ctScore = latestSegment?.team2Score || this.lastState.ct_score;
+
+    // Detect bomb events in the 'type' string
+    if (tx.type === 'player-planted-bomb') this.lastState.bomb = true;
+    if (tx.type === 'round-ended' || tx.type === 'bomb-defused' || tx.type === 'bomb-exploded') {
+      this.lastState.bomb = false;
+    }
+
+    const event: EngineSeriesEvent = {
+      type: 'game_event',
+      payload: {
+        series_id: this.matchId,
+        event_type: tx.type,
+        game_state: {
+          round: currentRound,
+          bomb_planted: this.lastState.bomb,
+          terrorist_score: tScore,
+          ct_score: ctScore,
+          last_action: tx.type
         }
       }
+    };
 
-    } catch (err: any) {
-      console.error("❌ Adapter Poll Error:", err.response?.data || err.message);
+    if (this.engineWs?.readyState === WebSocket.OPEN) {
+      this.engineWs.send(JSON.stringify(event));
+      this.lastState = { round: currentRound, t_score: tScore, ct_score: ctScore, bomb: this.lastState.bomb };
     }
   }
 
-  public stop() {
-    if (this.pollInterval) clearInterval(this.pollInterval);
-    if (this.engineWs) this.engineWs.close();
+  private startMockReplay() {
+    console.log('🎭 [ADAPTER] Starting "Tryhard" Mock Replay...');
+    let round = 1;
+    let tScore = 0;
+    let ctScore = 0;
+
+    const sequence = [
+      { type: 'round-started', delay: 1000 },
+      { type: 'player-killed-player', delay: 3000 },
+      { type: 'player-killed-player', delay: 2000 },
+      { type: 'player-planted-bomb', delay: 5000 },
+      { type: 'player-killed-player', delay: 2000 },
+      { type: 'bomb-exploded', delay: 10000 },
+      { type: 'round-ended', delay: 2000 }
+    ];
+
+    let i = 0;
+    const run = () => {
+      const step = sequence[i % sequence.length];
+      if (!step) return;
+
+      if (step.type === 'round-ended') {
+        tScore++;
+        round++;
+      }
+
+      this.processTransaction({
+        id: `mock-${Date.now()}`,
+        type: step.type,
+        timestamp: new Date().toISOString(),
+        seriesState: {
+          games: [{
+            segments: [{ number: round, team1Score: tScore, team2Score: ctScore }]
+          }]
+        }
+      });
+
+      i++;
+      setTimeout(run, step.delay);
+    };
+
+    run();
   }
 }
 
-// Configuration from Environment or Constants
-const GRID_API_KEY = process.env.GRID_API_KEY || 'REPLACE_WITH_YOUR_KEY';
-const MATCH_ID = process.env.MATCH_ID || '12345';
+const GRID_API_KEY = process.env.GRID_API_KEY || '';
+const MATCH_ID = process.env.MATCH_ID || 'cs2-demo-match';
 const ENGINE_URL = process.env.ENGINE_URL || 'ws://localhost:8080';
 
-const adapter = new GridAdapter(MATCH_ID, ENGINE_URL, GRID_API_KEY);
-adapter.start();
+new HighFidelityAdapter(MATCH_ID, ENGINE_URL, GRID_API_KEY).start();
