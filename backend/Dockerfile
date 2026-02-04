@@ -2,7 +2,8 @@
 FROM golang:1.24-alpine AS builder
 WORKDIR /app
 COPY backend/go.mod ./
-# COPY backend/go.sum ./ # Uncomment if you have dependencies
+# Auto-generate go.sum if missing
+RUN go mod tidy
 RUN go mod download
 COPY backend/ .
 RUN CGO_ENABLED=0 GOOS=linux go build -o /engine cmd/server/main.go
