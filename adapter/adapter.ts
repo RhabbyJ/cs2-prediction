@@ -59,7 +59,16 @@ class HighFidelityAdapter {
     private engineUrl: string,
     private apiKey: string
   ) {
-    this.isMock = !apiKey || apiKey === 'REPLACE_WITH_YOUR_KEY';
+    // Robust detection: if key is empty or looks like one of my placeholders, treat as mock
+    this.isMock = !apiKey ||
+      apiKey.includes('REPLACE_WITH') ||
+      apiKey.includes('YOUR_PASTED_GRID') ||
+      apiKey.length < 10;
+
+    // Ensure engine URL always has /ws suffix
+    if (!this.engineUrl.endsWith('/ws')) {
+      this.engineUrl = this.engineUrl.replace(/\/$/, '') + '/ws';
+    }
   }
 
   public async start() {
