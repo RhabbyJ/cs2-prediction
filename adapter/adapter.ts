@@ -110,24 +110,39 @@ class HighFidelityAdapter {
 
   private connectToGrid() {
     console.log(`📡 [ADAPTER] Connecting to GRID Live Data Feed for Series: ${this.matchId}`);
-    // Official format: wss://api.grid.gg/live-data-feed/series/{seriesId}?key={apiKey}
-    const gridUrl = `wss://api.grid.gg/live-data-feed/series/${this.matchId}?key=${this.apiKey}`;
+    // Official format: wss://api.grid.gg/live-data-feed/series/{seriesId}?key={apiKey}&useConfig=true
+    const gridUrl = `wss://api.grid.gg/live-data-feed/series/${this.matchId}?key=${this.apiKey}&useConfig=true`;
 
     this.gridWs = new WebSocket(gridUrl);
 
     this.gridWs.on('open', () => {
       console.log('✅ [ADAPTER] Connected to GRID Live Data Feed');
+
+      // Send catch-all configuration to start the stream as per docs
+      const config = {
+        rules: [
+          {
+            eventTypeMatcher: { actor: "*", action: "*", target: "*" },
+            exclude: false,
+            includeFullState: true
+          }
+        ]
+      };
+
+      console.log('📤 [ADAPTER] Sending GRID Configuration Payload...');
+      this.gridWs?.send(JSON.stringify(config));
     });
 
     this.gridWs.on('message', (data) => {
       const tx = JSON.parse(data.toString()) as GridTransaction;
-      console.log(`📡 [ADAPTER] Incoming Transaction: ${tx.id} | Type: ${tx.type || tx.action}`);
+      console.log(`📡 [ADAPTER] Incoming Transaction: ${tx.id} | Action: ${tx.action}`);
       this.processTransaction(tx);
     });
 
     this.gridWs.on('close', (code, reason) => {
-      console.log(`🔌 [ADAPTER] GRID Connection Closed (${code}): ${reason}`);
-      setTimeout(() => this.connectToGrid(), 5000);
+      console.log(`🔌 [ADAPTER] GRID Connection Closed (${code}): ${reason || 'No reason'}`);
+      // Increase delay to 15s to respect the "5 requests per minute" limit
+      setTimeout(() => this.connectToGrid(), 15000);
     });
 
     this.gridWs.on('error', (e) => {
