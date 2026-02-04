@@ -1,0 +1,42 @@
+@import "tailwindcss";
+
+:root {
+  --background: #ffffff;
+  --background: 0 0% 4%;
+  --foreground: 0 0% 98%;
+  --neon-cyan: 180 100% 50%;
+  --neon-violet: 270 100% 60%;
+  --glass: rgba(255, 255, 255, 0.03);
+  --glass-border: rgba(255, 255, 255, 0.1);
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+body {
+  background-color: hsl(var(--background));
+  color: hsl(var(--foreground));
+  font-family: 'Inter', sans-serif;
+  overflow-x: hidden;
+}
+
+.glass-card {
+  background: var(--glass);
+  backdrop-filter: blur(12px);
+  border: 1px solid var(--glass-border);
+  border-radius: 12px;
+}
+
+.neon-cyan-glow {
+  box-shadow: 0 0 15px hsla(var(--neon-cyan), 0.3);
+  border-color: hsl(var(--neon-cyan));
+}
+
+.neon-violet-glow {
+  box-shadow: 0 0 15px hsla(var(--neon-violet), 0.3);
+  border-color: hsl(var(--neon-violet));
+}
