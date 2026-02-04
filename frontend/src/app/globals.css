@@ -1,87 +1,47 @@
 @import "tailwindcss";
-@import url('https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
 
 :root {
-  /* Kalshi-Inspired Palette */
-  --background: #000000;
+  --background: #0a0a0a;
   --foreground: #ffffff;
+  --card-bg: #141414;
+  --card-border: #262626;
 
-  --card-bg: #121212;
-  --card-border: rgba(255, 255, 255, 0.08);
+  --primary: #2563eb;
+  --yes-blue: #3b82f6;
+  --no-purple: #a855f7;
 
-  --brand-primary: #00D991;
-
-  /* Trading Colors */
-  --yes-blue: #265CFF;
-  --no-purple: #AA00FF;
-
-  --success: #0AC285;
-  --error: #D91616;
-
-  --text-primary: rgba(255, 255, 255, 0.9);
-  --text-secondary: rgba(255, 255, 255, 0.6);
-  --text-tertiary: rgba(255, 255, 255, 0.3);
-}
-
-* {
-  box-sizing: border-box;
-  padding: 0;
-  margin: 0;
+  --text-muted: #a1a1aa;
 }
 
 body {
   background-color: var(--background);
-  color: var(--text-primary);
-  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  color: var(--foreground);
+  font-family: 'Inter', sans-serif;
   -webkit-font-smoothing: antialiased;
-  overflow-x: hidden;
 }
 
-/* Elegant Scrollbar */
-::-webkit-scrollbar {
-  width: 6px;
-}
-
-::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.1);
-  border-radius: 10px;
-}
-
-::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.2);
-}
-
-/* Animations */
-@keyframes fadeIn {
-  from {
-    opacity: 0;
-    transform: translateY(10px);
-  }
-
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-.animate-fade-in {
-  animation: fadeIn 0.5s ease-out forwards;
-}
-
-/* Fintech Utility Classes */
-.fintech-card {
+.test-card {
   background: var(--card-bg);
   border: 1px solid var(--card-border);
-  border-radius: 12px;
-  transition: border-color 0.2s ease;
+  border-radius: 8px;
+  padding: 1.5rem;
 }
 
-.fintech-card:hover {
-  border-color: rgba(255, 255, 255, 0.15);
+.status-badge {
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.bg-yes {
+  background-color: var(--yes-blue);
+}
+
+.bg-no {
+  background-color: var(--no-purple);
 }
 
 .text-yes {
@@ -92,10 +52,19 @@ body {
   color: var(--no-purple);
 }
 
-.bg-yes {
-  background-color: var(--yes-blue);
+/* Remove animations for testing stability */
+.animate-pulse-slow {
+  animation: pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite;
 }
 
-.bg-no {
-  background-color: var(--no-purple);
+@keyframes pulse {
+
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: .7;
+  }
 }

@@ -1,23 +1,16 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import { useEffect, useState } from "react";
 import { 
-  TrendingUp, 
-  TrendingDown, 
+  Activity, 
   ShieldCheck, 
-  Activity,
-  History,
-  LayoutDashboard,
-  Timer,
-  Info,
-  ChevronRight,
-  ArrowUpRight,
-  ArrowDownRight
+  Globe, 
+  Zap,
+  Shield,
+  Clock
 } from "lucide-react";
-import { motion, AnimatePresence } from "framer-motion";
 
-export default function Dashboard() {
-  const [mounted, setMounted] = useState(false);
+export default function CS2Dashboard() {
   const [gameState, setGameState] = useState({
     round: 14,
     t_score: 8,
@@ -25,7 +18,7 @@ export default function Dashboard() {
     bomb: true,
     last_action: "Bomb Planted (Site A)"
   });
-  
+
   const [markets, setMarkets] = useState([
     { id: "series_winner", title: "Match Winner", yes: 64, no: 36, volume: "128k" },
     { id: "r15_winner", title: "Round 15 Winner", yes: 52, no: 48, volume: "12k" },
@@ -33,14 +26,11 @@ export default function Dashboard() {
   ]);
 
   const [matches, setMatches] = useState<any[]>([]);
+  const [selectedMarket, setSelectedMarket] = useState(markets[0]);
 
   useEffect(() => {
-    setMounted(true);
+    const ws = new WebSocket(process.env.NEXT_PUBLIC_ENGINE_URL || "ws://localhost:8080/ws");
     
-    // Connect to Backend WebSocket
-    const engineUrl = process.env.NEXT_PUBLIC_ENGINE_URL || "ws://localhost:8080";
-    const ws = new WebSocket(`${engineUrl}/ws`);
-
     ws.onmessage = (event) => {
       const data = JSON.parse(event.data);
       if (data.type === "game_event") {
@@ -55,242 +45,194 @@ export default function Dashboard() {
           setMarkets(data.payload.markets);
         }
       } else if (data.type === "match_occurred") {
-        setMatches(prev => [data.payload, ...prev].slice(0, 5));
+        setMatches(prev => [data.payload, ...prev].slice(0, 10));
       }
     };
 
     return () => ws.close();
   }, []);
 
-  if (!mounted) return null;
-
   return (
-    <div className="min-h-screen bg-black text-white selection:bg-blue-500/30">
-      {/* Navigation */}
-      <nav className="border-b border-white/5 bg-black/50 backdrop-blur-md sticky top-0 z-50">
-        <div className="max-w-[1600px] mx-auto px-6 h-16 flex items-center justify-between">
-          <div className="flex items-center gap-8">
-            <div className="flex items-center gap-2">
-              <div className="w-8 h-8 bg-[#00D991] rounded-lg flex items-center justify-center font-black text-black">IF</div>
-              <span className="text-xl font-bold tracking-tight">Information Finance</span>
+    <div className="min-h-screen bg-[#0a0a0a] text-white p-4 md:p-8">
+      <div className="max-w-[1400px] mx-auto space-y-6">
+        
+        {/* Simple Header */}
+        <header className="flex justify-between items-center bg-[#141414] border border-[#262626] p-4 rounded-lg shadow-xl">
+          <div className="flex items-center gap-3">
+            <div className="bg-blue-600 p-2 rounded">
+              <Shield className="text-white w-5 h-5" />
             </div>
-            <div className="hidden md:flex items-center gap-6 text-sm font-medium text-zinc-400">
-              <a href="#" className="text-white border-b-2 border-[#00D991] h-16 flex items-center">Markets</a>
-              <a href="#" className="hover:text-white transition-colors h-16 flex items-center">Portfolio</a>
-              <a href="#" className="hover:text-white transition-colors h-16 flex items-center">Activity</a>
+            <div>
+              <h1 className="font-bold text-lg tracking-tight">IF TRADING HUB</h1>
+              <p className="text-[10px] text-zinc-500 uppercase tracking-widest font-black">TEST MODE ACTIVE</p>
             </div>
           </div>
-          <div className="flex items-center gap-4">
-             <div className="flex items-center gap-2 px-3 py-1.5 bg-zinc-900 border border-white/5 rounded-full text-[11px] font-bold text-zinc-400">
-               <div className="w-2 h-2 bg-[#00D991] rounded-full animate-pulse" />
-               GEOCOMPLY: OK
-             </div>
-             <div className="w-8 h-8 bg-zinc-800 rounded-full border border-white/10" />
+          <div className="flex items-center gap-2 bg-[#0a0a0a] px-3 py-1.5 rounded-full border border-zinc-800">
+            <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+            <span className="text-[10px] font-bold text-zinc-400">CONNECTIVITY: OPTIMAL</span>
           </div>
-        </div>
-      </nav>
+        </header>
 
-      <div className="max-w-[1600px] mx-auto px-6 py-8">
-        <div className="grid grid-cols-12 gap-8">
+        <div className="grid grid-cols-12 gap-6">
           
-          {/* Main Content Area */}
-          <main className="col-span-12 lg:col-span-8 space-y-8">
+          {/* Main Info (Left) */}
+          <div className="col-span-12 lg:col-span-8 space-y-6">
             
-            {/* Live Score Strip (The 'Data-First' Hero) */}
-            <section className="fintech-card p-6 flex flex-col md:flex-row items-center justify-between gap-8 border-l-4 border-l-[#00D991]">
-               <div className="flex items-center gap-4">
-                 <div className="bg-zinc-900 p-3 rounded-2xl border border-white/5">
-                   <Activity className="w-6 h-6 text-[#00D991]" />
-                 </div>
-                 <div>
-                   <h2 className="text-sm font-bold uppercase tracking-widest text-zinc-500">Live Match</h2>
-                   <div className="text-xl font-black">NAVI vs. Team Liquid</div>
-                 </div>
-               </div>
-
-               <div className="flex items-center gap-12">
-                 <div className="text-center">
-                   <div className="text-[10px] font-bold text-zinc-500 uppercase mb-1">Score</div>
-                   <div className="flex items-center gap-4">
-                     <span className="text-3xl font-black text-[#265CFF]">{gameState.t_score}</span>
-                     <span className="text-zinc-700 font-bold">:</span>
-                     <span className="text-3xl font-black text-[#AA00FF]">{gameState.ct_score}</span>
-                   </div>
-                 </div>
-                 <div className="text-center border-l border-white/5 pl-12">
-                   <div className="text-[10px] font-bold text-zinc-500 uppercase mb-1">Round</div>
-                   <div className="text-2xl font-black">{gameState.round}</div>
-                 </div>
-                 <div className="text-center border-l border-white/5 pl-12">
-                   <div className="text-[10px] font-bold text-zinc-500 uppercase mb-1">Status</div>
-                   <div className="flex items-center gap-2">
-                     {gameState.bomb && <div className="w-2 h-2 bg-red-500 rounded-full animate-ping" />}
-                     <span className={`text-sm font-bold ${gameState.bomb ? 'text-red-500' : 'text-zinc-400'}`}>
-                       {gameState.last_action}
-                     </span>
-                   </div>
-                 </div>
-               </div>
-            </section>
+            {/* Match State */}
+            <div className="bg-[#141414] border border-[#262626] rounded-xl p-8 flex justify-between items-center">
+              <div>
+                <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest mb-1">Live Series</p>
+                <h2 className="text-3xl font-black">NAVI vs. LIQUID</h2>
+                <div className="mt-4 flex items-center gap-3 text-sm text-zinc-400">
+                  <span className={`status-badge ${gameState.bomb ? 'bg-orange-500/20 text-orange-500 border border-orange-500/30' : 'bg-blue-500/10 text-blue-500 border border-blue-500/20'}`}>
+                    {gameState.bomb ? 'BOMB PLANTED' : 'IN PLAY'}
+                  </span>
+                  <span className="font-medium">{gameState.last_action}</span>
+                </div>
+              </div>
+              
+              <div className="flex gap-12 text-center">
+                <div>
+                  <div className="text-5xl font-black tabular-nums tracking-tighter">
+                    <span className="text-blue-500">{gameState.t_score}</span>
+                    <span className="mx-2 text-zinc-800">:</span>
+                    <span className="text-purple-500">{gameState.ct_score}</span>
+                  </div>
+                  <p className="text-[10px] font-bold text-zinc-500 uppercase mt-1">Match Score</p>
+                </div>
+                <div>
+                  <div className="text-5xl font-black tabular-nums tracking-tighter text-zinc-200">
+                    {gameState.round}
+                  </div>
+                  <p className="text-[10px] font-bold text-zinc-500 uppercase mt-1">Round</p>
+                </div>
+              </div>
+            </div>
 
             {/* Markets Grid */}
-            <div className="space-y-6">
-              <div className="flex items-center justify-between">
-                <h3 className="text-lg font-bold">Open Forecasts</h3>
-                <div className="text-xs text-zinc-500 font-medium">Updated 0ms ago</div>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {markets.map((m) => (
-                  <motion.div 
-                    key={m.id}
-                    layoutId={m.id}
-                    className="fintech-card overflow-hidden hover:bg-zinc-900/50 cursor-pointer"
-                  >
-                    <div className="p-5">
-                      <div className="flex justify-between items-start mb-4">
-                        <h4 className="font-bold text-white pr-4">{m.title}</h4>
-                        <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest px-2 py-1 bg-white/5 rounded">Vol: {m.volume}</span>
-                      </div>
-                      
-                      <div className="flex gap-2">
-                        <div className="flex-1 flex flex-col gap-1">
-                          <div className="text-[9px] font-bold text-zinc-500 uppercase ml-1">Predict Yes</div>
-                          <button className="w-full py-3 bg-[#265CFF]/10 hover:bg-[#265CFF]/20 border border-[#265CFF]/30 rounded-xl flex items-center justify-between px-4 transition-all">
-                            <span className="text-sm font-bold text-[#265CFF]">YES</span>
-                            <span className="font-black text-white">${m.yes}</span>
-                          </button>
-                        </div>
-                        <div className="flex-1 flex flex-col gap-1">
-                          <div className="text-[9px] font-bold text-zinc-500 uppercase ml-1">Predict No</div>
-                          <button className="w-full py-3 bg-[#AA00FF]/10 hover:bg-[#AA00FF]/20 border border-[#AA00FF]/30 rounded-xl flex items-center justify-between px-4 transition-all">
-                            <span className="text-sm font-bold text-[#AA00FF]">NO</span>
-                            <span className="font-black text-white">${m.no}</span>
-                          </button>
-                        </div>
-                      </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {markets.map((market) => (
+                <div 
+                  key={market.id}
+                  onClick={() => setSelectedMarket(market)}
+                  className={`p-6 rounded-xl border transition-all cursor-pointer ${selectedMarket.id === market.id ? 'bg-[#1e1e1e] border-blue-500 shadow-[0_0_20px_rgba(59,130,246,0.1)]' : 'bg-[#141414] border-[#262626] hover:border-zinc-700'}`}
+                >
+                  <div className="flex justify-between mb-6">
+                    <h4 className="font-bold text-base">{market.title}</h4>
+                    <span className="text-[10px] font-mono text-zinc-500 bg-black px-2 py-1 rounded">V: {market.volume}</span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3 font-mono">
+                    <div className="bg-black/50 p-3 rounded-lg border border-zinc-800 flex justify-between items-center group">
+                      <span className="text-xs font-bold text-blue-500">YES</span>
+                      <span className="text-lg font-black">${market.yes}</span>
                     </div>
-                    {/* Tiny Depth Indicator */}
-                    <div className="h-1 bg-zinc-800 flex">
-                      <div className="h-full bg-[#265CFF]" style={{ width: `${m.yes}%` }} />
-                      <div className="h-full bg-[#AA00FF]" style={{ width: `${m.no}%` }} />
+                    <div className="bg-black/50 p-3 rounded-lg border border-zinc-800 flex justify-between items-center">
+                      <span className="text-xs font-bold text-purple-500">NO</span>
+                      <span className="text-lg font-black">${market.no}</span>
                     </div>
-                  </motion.div>
-                ))}
-              </div>
+                  </div>
+                </div>
+              ))}
             </div>
 
-            {/* Verification & Logs Table */}
-            <section className="space-y-4">
-               <h3 className="text-lg font-bold flex items-center gap-2">
-                 <ShieldCheck className="w-5 h-5 text-zinc-500" />
-                 VeritasChain Audit Log
-               </h3>
-               <div className="fintech-card overflow-hidden">
-                 <table className="w-full text-left border-collapse">
-                   <thead>
-                     <tr className="bg-white/2 border-b border-white/5">
-                        <th className="px-6 py-4 text-[10px] font-bold text-zinc-500 uppercase">Event ID</th>
-                        <th className="px-6 py-4 text-[10px] font-bold text-zinc-500 uppercase">Description</th>
-                        <th className="px-6 py-4 text-[10px] font-bold text-zinc-500 uppercase">Timestamp</th>
-                        <th className="px-6 py-4 text-[10px] font-bold text-zinc-500 uppercase">Status</th>
-                     </tr>
-                   </thead>
-                   <tbody className="divide-y divide-white/5">
-                     {[1, 2, 3, 4].map((i) => (
-                       <tr key={i} className="hover:bg-white/2 transition-colors">
-                         <td className="px-6 py-4 text-xs font-mono text-zinc-400">#IF-{(8420 + i)}</td>
-                         <td className="px-6 py-4 text-xs font-medium text-white">Match Executed (Maker: 91, Taker: {100-i})</td>
-                         <td className="px-6 py-4 text-xs text-zinc-500">{new Date().toLocaleTimeString()}</td>
-                         <td className="px-6 py-4">
-                           <span className="px-2 py-1 bg-[#00D991]/10 text-[#00D991] text-[9px] font-bold uppercase rounded border border-[#00D991]/20">Verified</span>
-                         </td>
-                       </tr>
-                     ))}
-                   </tbody>
-                 </table>
-               </div>
-            </section>
-          </main>
+            {/* Audit Log (Bottom) */}
+            <div className="bg-[#141414] border border-[#262626] rounded-xl overflow-hidden">
+              <div className="p-4 bg-zinc-900/50 border-b border-[#262626] flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <ShieldCheck className="w-4 h-4 text-green-500" />
+                  <span className="text-[10px] font-black uppercase tracking-widest text-zinc-400">VeritasChain Audit Feed</span>
+                </div>
+                <span className="text-[9px] font-mono text-zinc-600">CRYPTO-PROVED</span>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-[11px]">
+                  <thead className="bg-black/20 text-zinc-600 font-bold uppercase tracking-wider">
+                    <tr>
+                      <th className="px-6 py-3">Event Hash</th>
+                      <th className="px-6 py-3">Settlement Detail</th>
+                      <th className="px-6 py-3 text-right">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-zinc-800/50">
+                    {matches.length > 0 ? matches.map((m, i) => (
+                      <tr key={i} className="hover:bg-zinc-800/20">
+                        <td className="px-6 py-4 font-mono text-zinc-500">#IF-{9420 + i}</td>
+                        <td className="px-6 py-4 font-medium text-zinc-300">Execution @ ${m.price} | Qty: {m.quantity}</td>
+                        <td className="px-6 py-4 text-right">
+                          <span className="text-[9px] font-black text-green-500 bg-green-500/10 px-2 py-1 rounded-sm border border-green-500/20">VERIFIED</span>
+                        </td>
+                      </tr>
+                    )) : (
+                      <tr>
+                        <td colSpan={3} className="px-6 py-12 text-center text-zinc-600 font-mono italic">Listening for on-chain events...</td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
 
-          {/* Right Sidebar - Execution & Activity */}
-          <aside className="col-span-12 lg:col-span-4 space-y-8">
+          {/* Sidebar Controls (Right) */}
+          <div className="col-span-12 lg:col-span-4 space-y-6">
             
-            {/* Terminal Style Execution Panel */}
-            <section className="fintech-card p-6 bg-zinc-900/30">
-              <div className="flex items-center justify-between mb-8">
-                <h3 className="text-sm font-bold uppercase tracking-widest text-[#00D991]">Execution Panel</h3>
-                <Timer className="w-4 h-4 text-zinc-500" />
+            <div className="bg-[#141414] border border-[#262626] rounded-xl p-6 shadow-2xl sticky top-24">
+              <div className="flex items-center gap-2 mb-8">
+                <Zap className="w-4 h-4 text-blue-500" />
+                <h3 className="font-bold text-xs uppercase tracking-widest">Trade Execution</h3>
               </div>
 
               <div className="space-y-6">
-                 <div>
-                   <label className="text-[10px] font-bold text-zinc-500 uppercase mb-2 block px-1">Market Selection</label>
-                   <div className="p-3 bg-zinc-800 rounded-xl border border-white/5 flex items-center justify-between">
-                     <span className="text-sm font-bold">Match Winner</span>
-                     <ChevronRight className="w-4 h-4 text-zinc-500" />
-                   </div>
-                 </div>
+                <div className="bg-black p-4 rounded-lg border border-zinc-800">
+                  <span className="text-[10px] font-bold text-zinc-600 uppercase block mb-1">Active Market</span>
+                  <span className="font-bold text-sm block truncate">{selectedMarket.title}</span>
+                </div>
 
-                 <div className="grid grid-cols-2 gap-2">
-                   <button className="py-3 bg-[#265CFF] text-white font-black rounded-xl shadow-lg shadow-blue-500/10">BUY YES</button>
-                   <button className="py-3 bg-[#AA00FF] text-white font-black rounded-xl">BUY NO</button>
-                 </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <button className="py-4 bg-blue-600 hover:bg-blue-500 text-white rounded-lg font-black text-xs transition-all shadow-lg shadow-blue-900/20">
+                    BUY YES (${selectedMarket.yes})
+                  </button>
+                  <button className="py-4 bg-purple-600 hover:bg-purple-500 text-white rounded-lg font-black text-xs transition-all shadow-lg shadow-purple-900/20">
+                    BUY NO (${selectedMarket.no})
+                  </button>
+                </div>
 
-                 <div className="space-y-2">
-                    <label className="text-[10px] font-bold text-zinc-500 uppercase mb-2 block px-1">Investment (USD)</label>
-                    <div className="relative">
-                      <input 
-                        type="number" 
-                        defaultValue="100.00"
-                        className="w-full bg-zinc-800 border border-white/5 rounded-xl p-4 text-lg font-black focus:outline-none focus:ring-1 focus:ring-[#00D991] transition-all" 
-                      />
-                    </div>
-                 </div>
+                <div className="p-4 bg-zinc-900/50 rounded-lg space-y-3">
+                  <div className="flex justify-between items-center text-[10px] font-bold">
+                    <span className="text-zinc-500 uppercase">Input Amount</span>
+                    <span className="text-blue-500">$100.00</span>
+                  </div>
+                  <div className="flex justify-between items-center text-[10px] font-bold">
+                    <span className="text-zinc-500 uppercase">Est. Return</span>
+                    <span className="text-green-500">$156.25</span>
+                  </div>
+                </div>
 
-                 <div className="p-4 bg-zinc-800/50 rounded-xl space-y-3 border border-white/5">
-                   <div className="flex justify-between text-xs">
-                     <span className="text-zinc-500 uppercase font-bold text-[9px]">Est. Payout</span>
-                     <span className="text-[#00D991] font-black tracking-tight">$156.25</span>
-                   </div>
-                   <div className="flex justify-between text-xs">
-                     <span className="text-zinc-500 uppercase font-bold text-[9px]">Implied Probability</span>
-                     <span className="text-white font-bold">64.12%</span>
-                   </div>
-                 </div>
-
-                 <button className="w-full py-4 bg-white text-black font-black rounded-2xl hover:bg-zinc-200 transition-all uppercase tracking-tighter shadow-xl shadow-white/5">
-                   Confirm Order
-                 </button>
+                <button className="w-full py-5 bg-white text-black font-black text-xs rounded-xl hover:bg-zinc-200 transition-all uppercase tracking-[0.2em] shadow-2xl">
+                  Confirm Trade
+                </button>
               </div>
-            </section>
 
-            {/* Global Activity Feed */}
-            <section className="space-y-4 px-2">
-               <h3 className="text-sm font-bold uppercase tracking-widest text-zinc-500">Live Activity</h3>
-               <div className="space-y-6">
-                 {[1, 2, 3].map((i) => (
-                   <div key={i} className="flex gap-4 group cursor-help">
-                     <div className="relative mt-1">
-                       <div className="w-1.5 h-1.5 rounded-full bg-zinc-800 border border-white/10" />
-                       <div className="absolute top-1.5 left-[3px] w-px h-12 bg-zinc-900" />
+              {/* Feed Preview */}
+              <div className="mt-8 space-y-4">
+                 <div className="flex items-center gap-2">
+                   <Clock className="w-3 h-3 text-zinc-500" />
+                   <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">Global Activity</span>
+                 </div>
+                 <div className="space-y-4">
+                   {[1, 2].map((i) => (
+                     <div key={i} className="border-l-2 border-zinc-800 pl-4 py-1">
+                       <p className="text-[11px] font-bold text-zinc-200">
+                         <span className="text-blue-400">User_921</span> predicted YES
+                       </p>
+                       <p className="text-[10px] text-zinc-500 mt-0.5">$1.2k Contract • {i*3}m ago</p>
                      </div>
-                     <div>
-                        <div className="text-xs font-semibold text-zinc-300 group-hover:text-white transition-colors">
-                          <span className="text-[#265CFF]">User_842</span> predicted <span className="text-[#265CFF]">YES</span>
-                        </div>
-                        <div className="text-[10px] text-zinc-500 mt-1 flex items-center gap-2">
-                          <span>$5.2k Contract</span>
-                          <span>•</span>
-                          <span>{i * 2}m ago</span>
-                        </div>
-                     </div>
-                   </div>
-                 ))}
-               </div>
-            </section>
+                   ))}
+                 </div>
+              </div>
+            </div>
+          </div>
 
-          </aside>
         </div>
       </div>
     </div>
