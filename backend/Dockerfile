@@ -1,11 +1,12 @@
 # Build stage
 FROM golang:1.24-alpine AS builder
 WORKDIR /app
-COPY backend/go.mod ./
-# Auto-generate go.sum if missing
+
+# Copy all backend source first so go mod tidy can see imports
+COPY backend/ .
 RUN go mod tidy
 RUN go mod download
-COPY backend/ .
+
 RUN CGO_ENABLED=0 GOOS=linux go build -o /engine cmd/server/main.go
 
 # Run stage
