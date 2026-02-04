@@ -10,15 +10,33 @@ import { WebSocket } from 'ws';
  */
 interface GridTransaction {
   id: string;
-  type: string; // "player-killed-player", "player-planted-bomb", etc
-  timestamp: string;
+  type?: string;
+  actor: {
+    type: string;
+    id: string;
+    stateDelta?: any;
+    state?: any;
+  };
+  action: string;
+  target: {
+    type: string;
+    id: string;
+    stateDelta?: any;
+    state?: any;
+  };
   seriesState?: {
+    id: string;
     games: Array<{
-      segments: Array<{
-        number: number;
-        team1Score: number;
-        team2Score: number;
-      }>;
+      id: string;
+      started?: boolean;
+      team1Score?: number;
+      team2Score?: number;
+      state?: {
+        round?: number;
+        bombPlanted?: boolean;
+        team1Score?: number;
+        team2Score?: number;
+      };
     }>;
   };
 }
@@ -73,6 +91,7 @@ class HighFidelityAdapter {
 
   public async start() {
     console.log(`🚀 [ADAPTER] Initializing in ${this.isMock ? 'MOCK' : 'LIVE'} mode`);
+    console.log(`🔗 [ADAPTER] Engine URL: ${this.engineUrl}`);
     this.connectToEngine();
 
     if (this.isMock) {
@@ -90,10 +109,11 @@ class HighFidelityAdapter {
   }
 
   private connectToGrid() {
-    console.log('📡 [ADAPTER] Connecting to GRID Series Events API...');
-    this.gridWs = new WebSocket(`wss://api.grid.gg/series-events/v1/${this.matchId}`, {
-      headers: { 'x-grid-api-key': this.apiKey }
-    });
+    console.log(`📡 [ADAPTER] Connecting to GRID Live Data Feed for Series: ${this.matchId}`);
+    // Official format: wss://api.grid.gg/live-data-feed/series/{seriesId}?key={apiKey}
+    const gridUrl = `wss://api.grid.gg/live-data-feed/series/${this.matchId}?key=${this.apiKey}`;
+
+    this.gridWs = new WebSocket(gridUrl);
 
     this.gridWs.on('message', (data) => {
       const tx = JSON.parse(data.toString()) as GridTransaction;
@@ -113,37 +133,33 @@ class HighFidelityAdapter {
 
   private processTransaction(tx: GridTransaction) {
     // Extract state from transaction
-    const latestGame = tx.seriesState?.games[0];
-    const latestSegment = latestGame?.segments[latestGame.segments.length - 1];
+    const latestGame = tx.seriesState?.games?.[tx.seriesState.games.length - 1];
 
-    const currentRound = latestSegment?.number || this.lastState.round;
-    const tScore = latestSegment?.team1Score || this.lastState.t_score;
-    const ctScore = latestSegment?.team2Score || this.lastState.ct_score;
-
-    // Detect bomb events in the 'type' string
-    if (tx.type === 'player-planted-bomb') this.lastState.bomb = true;
-    if (tx.type === 'round-ended' || tx.type === 'bomb-defused' || tx.type === 'bomb-exploded') {
-      this.lastState.bomb = false;
-    }
+    // GRID CS2 Specific mapping: 
+    // Scores and rounds are extracted from the seriesState.
+    const currentRound = latestGame?.state?.round || this.lastState.round;
+    const tScore = latestGame?.state?.team1Score || latestGame?.team1Score || this.lastState.t_score;
+    const ctScore = latestGame?.state?.team2Score || latestGame?.team2Score || this.lastState.ct_score;
+    const isPlanted = latestGame?.state?.bombPlanted || tx.action === 'planted' || this.lastState.bomb;
 
     const event: EngineSeriesEvent = {
       type: 'game_event',
       payload: {
         series_id: this.matchId,
-        event_type: tx.type,
+        event_type: `${tx.actor?.type}-${tx.action}-${tx.target?.type}`,
         game_state: {
           round: currentRound,
-          bomb_planted: this.lastState.bomb,
+          bomb_planted: isPlanted,
           terrorist_score: tScore,
           ct_score: ctScore,
-          last_action: tx.type
+          last_action: `${tx.actor?.type} ${tx.action} ${tx.target?.type}`
         }
       }
     };
 
     if (this.engineWs?.readyState === WebSocket.OPEN) {
       this.engineWs.send(JSON.stringify(event));
-      this.lastState = { round: currentRound, t_score: tScore, ct_score: ctScore, bomb: this.lastState.bomb };
+      this.lastState = { round: currentRound, t_score: tScore, ct_score: ctScore, bomb: isPlanted };
     }
   }
 
