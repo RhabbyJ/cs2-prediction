@@ -100,7 +100,15 @@ class HighFidelityAdapter {
       this.processTransaction(tx);
     });
 
-    this.gridWs.on('error', (e) => console.error('❌ [ADAPTER] GRID WS Error:', e.message));
+    this.gridWs.on('error', (e) => {
+      console.error('❌ [ADAPTER] GRID WS Error:', e.message);
+      if (e.message.includes('404')) {
+        console.log('⚠️ [ADAPTER] GRID Series Events API returned 404. This might be due to incorrect Match ID or restricted permissions.');
+        console.log('🔄 [ADAPTER] Falling back to MOCK mode for testing safety...');
+        this.isMock = true;
+        this.startMockReplay();
+      }
+    });
   }
 
   private processTransaction(tx: GridTransaction) {
