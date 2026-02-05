@@ -1,5 +1,5 @@
 export const getAllSeriesNext24hQuery = `
-  query GetAllSeriesInNext24Hours($start: DateTime!, $end: DateTime!) {
+  query GetAllSeriesInNext24Hours($start: String!, $end: String!) {
     allSeries(
       filter: {
         startTimeScheduled: {
