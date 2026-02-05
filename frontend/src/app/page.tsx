@@ -2,6 +2,16 @@
 
 import { useEffect, useState } from "react";
 import { Globe, Shield } from "lucide-react";
+import {
+  getTournamentQuery,
+  getSeriesQuery,
+  getTeamQuery,
+  getPlayerQuery,
+  getEsportsOrganizationQuery,
+  getSeriesStateQuery,
+  getSeriesStatsQuery,
+} from "@/lib/grid/queries";
+import type { Tournament } from "@/lib/grid/types";
 
 export default function CS2Dashboard() {
   const [gameState, setGameState] = useState({
@@ -14,12 +24,13 @@ export default function CS2Dashboard() {
 
   const [gridData, setGridData] = useState<any[]>([]);
   const [connectionStatus, setConnectionStatus] = useState("CONNECTING");
-  const [gridTournament, setGridTournament] = useState<{
-    id: string;
-    name: string;
-    nameShortened?: string | null;
-  } | null>(null);
+  const [gridTournament, setGridTournament] = useState<Tournament | null>(null);
   const [gridError, setGridError] = useState<string | null>(null);
+  const [explorerEntity, setExplorerEntity] = useState("tournaments");
+  const [explorerId, setExplorerId] = useState("1");
+  const [explorerResult, setExplorerResult] = useState<string>("");
+  const [explorerError, setExplorerError] = useState<string | null>(null);
+  const [explorerLoading, setExplorerLoading] = useState(false);
 
   useEffect(() => {
     let ws: WebSocket | null = null;
@@ -99,6 +110,41 @@ export default function CS2Dashboard() {
       cancelled = true;
     };
   }, []);
+
+  const queryMap: Record<string, string> = {
+    tournaments: getTournamentQuery,
+    series: getSeriesQuery,
+    teams: getTeamQuery,
+    players: getPlayerQuery,
+    orgs: getEsportsOrganizationQuery,
+    seriesState: getSeriesStateQuery,
+    stats: getSeriesStatsQuery,
+  };
+
+  const runExplorerQuery = async () => {
+    setExplorerLoading(true);
+    setExplorerError(null);
+    setExplorerResult("");
+    try {
+      const res = await fetch("/api/grid", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          query: queryMap[explorerEntity],
+          variables: { id: explorerId },
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data?.error || "GRID API error");
+      }
+      setExplorerResult(JSON.stringify(data, null, 2));
+    } catch (err: any) {
+      setExplorerError(err?.message || "Query failed");
+    } finally {
+      setExplorerLoading(false);
+    }
+  };
 
   return (
     <div className="min-h-screen bg-[#0a0a0a] text-white p-4 md:p-8">
@@ -182,7 +228,7 @@ export default function CS2Dashboard() {
                     <div className="text-sm font-bold mt-1">
                       {gridTournament.name}{" "}
                       <span className="text-[10px] text-zinc-500 font-mono">
-                        ({gridTournament.id}{gridTournament.nameShortened ? ` · ${gridTournament.nameShortened}` : ""})
+                        ({gridTournament.id}{gridTournament.nameShortened ? ` - ${gridTournament.nameShortened}` : ""})
                       </span>
                     </div>
                   ) : (
@@ -209,6 +255,65 @@ export default function CS2Dashboard() {
                   <div className="text-center py-6 text-zinc-600 text-xs italic font-mono">
                     Waiting for real GRID telemetry...
                   </div>
+                )}
+              </div>
+            </div>
+
+            {/* GRID QUERY EXPLORER */}
+            <div className="bg-[#141414] border border-[#262626] rounded-xl overflow-hidden">
+              <div className="p-4 bg-zinc-900/40 border-b border-[#262626] flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Globe className="w-4 h-4 text-blue-400" />
+                  <span className="text-[10px] font-black uppercase tracking-widest text-zinc-400">GRID QUERY EXPLORER</span>
+                </div>
+                <span className="text-[9px] font-mono text-zinc-500">/api/grid</span>
+              </div>
+              <div className="p-4 space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  <div>
+                    <label className="text-[10px] uppercase tracking-widest text-zinc-500">Entity</label>
+                    <select
+                      className="mt-1 w-full bg-black/40 border border-zinc-800 rounded px-3 py-2 text-sm"
+                      value={explorerEntity}
+                      onChange={(e) => setExplorerEntity(e.target.value)}
+                    >
+                      <option value="tournaments">Tournaments</option>
+                      <option value="series">Series</option>
+                      <option value="orgs">Esports Organizations</option>
+                      <option value="teams">Teams</option>
+                      <option value="players">Players</option>
+                      <option value="seriesState">Series State</option>
+                      <option value="stats">Stats</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-[10px] uppercase tracking-widest text-zinc-500">ID</label>
+                    <input
+                      className="mt-1 w-full bg-black/40 border border-zinc-800 rounded px-3 py-2 text-sm"
+                      value={explorerId}
+                      onChange={(e) => setExplorerId(e.target.value)}
+                      placeholder="1"
+                    />
+                  </div>
+                  <div className="flex items-end">
+                    <button
+                      className="w-full py-2 bg-blue-600 hover:bg-blue-500 text-white rounded text-xs font-black uppercase tracking-widest"
+                      onClick={runExplorerQuery}
+                      disabled={explorerLoading}
+                    >
+                      {explorerLoading ? "Querying..." : "Run Query"}
+                    </button>
+                  </div>
+                </div>
+
+                {explorerError ? (
+                  <div className="text-xs text-red-400">{explorerError}</div>
+                ) : explorerResult ? (
+                  <pre className="text-[10px] bg-black/40 border border-zinc-800 rounded p-3 overflow-x-auto">
+{explorerResult}
+                  </pre>
+                ) : (
+                  <div className="text-xs text-zinc-600">Pick an entity and ID, then run the query.</div>
                 )}
               </div>
             </div>

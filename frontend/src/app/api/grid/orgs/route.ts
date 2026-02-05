@@ -1,13 +1,13 @@
 import { NextResponse } from "next/server";
 import { gridFetch } from "@/lib/grid/client";
-import { getTournamentQuery } from "@/lib/grid/queries";
+import { getEsportsOrganizationQuery } from "@/lib/grid/queries";
 
 export async function GET(request: Request) {
   const url = new URL(request.url);
   const id = url.searchParams.get("id") || "1";
 
   const result = await gridFetch({
-    query: getTournamentQuery,
+    query: getEsportsOrganizationQuery,
     variables: { id },
   });
 
