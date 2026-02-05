@@ -1,272 +1,174 @@
-// adapter.ts
-// The "High-Fidelity" Bridge between GRID and Information Finance Engine
-
 import axios from 'axios';
-import { WebSocket } from 'ws';
+import WebSocket from 'ws';
+import dotenv from 'dotenv';
 
-/**
- * Official GRID Series Events Transaction Schema
- * Format: { actor }-{ action }-{ target }
- */
-interface GridTransaction {
-  id: string;
-  type?: string;
-  actor: {
-    type: string;
-    id: string;
-    stateDelta?: any;
-    state?: any;
-  };
-  action: string;
-  target: {
-    type: string;
-    id: string;
-    stateDelta?: any;
-    state?: any;
-  };
-  seriesState?: {
-    id: string;
-    games: Array<{
-      id: string;
-      started?: boolean;
-      team1Score?: number;
-      team2Score?: number;
-      state?: {
-        round?: number;
-        bombPlanted?: boolean;
-        team1Score?: number;
-        team2Score?: number;
-      };
-    }>;
-  };
+dotenv.config();
+
+// --- CONFIGURATION ---
+const GRID_API_KEY = process.env.GRID_API_KEY || ''; // Your Open Access Key
+let ENGINE_URL = process.env.ENGINE_URL || 'ws://engine:8080/ws'; // Internal Docker URL by default
+const MATCH_ID = process.env.MATCH_ID || '28'; // Default CS2 Loop ID
+const POLL_INTERVAL = 2000; // 2 seconds
+
+// Ensure engine URL always has /ws suffix if it's the trading endpoint
+if (!ENGINE_URL.endsWith('/ws')) {
+  ENGINE_URL = ENGINE_URL.replace(/\/$/, '') + '/ws';
 }
 
-/**
- * Normalized Engine Event
- */
+// --- SCHEMA DEFINITIONS ---
+
+// 1. The "Commercial" Schema (What the Engine Expects)
 interface EngineSeriesEvent {
-  type: 'series_state' | 'game_event';
+  type: 'series_state';
   payload: {
     series_id: string;
-    event_type?: string;
+    timestamp: string;
     game_state: {
+      map: string;
       round: number;
-      bomb_planted: boolean;
       terrorist_score: number;
       ct_score: number;
+      bomb_planted: boolean;
+      phase: 'live' | 'ended';
       last_action?: string;
     };
-    markets?: Array<{
-      id: string;
-      title: string;
-      yes: number;
-      no: number;
-      volume: string;
-    }>;
   };
 }
 
-class HighFidelityAdapter {
-  private engineWs: WebSocket | null = null;
-  private gridWs: WebSocket | null = null;
-  private lastState: any = { round: 1, t_score: 0, ct_score: 0, bomb: false };
-  private isMock: boolean = false;
-  private useConfig: boolean = false;
-  private connectionAttempts: number = 0;
-
-  constructor(
-    private matchId: string,
-    private engineUrl: string,
-    private apiKey: string
-  ) {
-    // Robust detection: if key is empty or looks like one of my placeholders, treat as mock
-    this.isMock = !apiKey ||
-      apiKey.includes('REPLACE_WITH') ||
-      apiKey.includes('YOUR_PASTED_GRID') ||
-      apiKey.length < 10;
-
-    // Ensure engine URL always has /ws suffix
-    if (!this.engineUrl.endsWith('/ws')) {
-      this.engineUrl = this.engineUrl.replace(/\/$/, '') + '/ws';
-    }
-  }
-
-  public async start() {
-    console.log(`🚀 [ADAPTER] Initializing in ${this.isMock ? 'MOCK' : 'LIVE'} mode`);
-    console.log(`🔗 [ADAPTER] Engine URL: ${this.engineUrl}`);
-    this.connectToEngine();
-
-    if (this.isMock) {
-      this.startMockReplay();
-    } else {
-      // Start with useConfig=false (Default/Zero-Config mode)
-      this.useConfig = false;
-      this.connectToGrid();
-    }
-  }
-
-  private connectToEngine() {
-    this.engineWs = new WebSocket(this.engineUrl);
-    this.engineWs.on('open', () => console.log('✅ [ADAPTER] Connected to Matching Engine'));
-    this.engineWs.on('error', (e) => console.error('❌ [ADAPTER] Engine WS Error:', e.message));
-    this.engineWs.on('close', () => setTimeout(() => this.connectToEngine(), 5000));
-  }
-
-  private connectToGrid() {
-    this.connectionAttempts++;
-    console.log(`📡 [ADAPTER] Connection Attempt #${this.connectionAttempts}`);
-    console.log(`📡 [ADAPTER] Connecting to GRID (useConfig=${this.useConfig}) for Series: ${this.matchId}`);
-
-    // Official format: wss://api.grid.gg/live-data-feed/series/{seriesId}?key={apiKey}&useConfig={true|false}
-    const gridUrl = `wss://api.grid.gg/live-data-feed/series/${this.matchId}?key=${this.apiKey}&useConfig=${this.useConfig}`;
-
-    this.gridWs = new WebSocket(gridUrl);
-
-    this.gridWs.on('open', () => {
-      console.log(`✅ [ADAPTER] GRID WebSocket Opened (Mode: ${this.useConfig ? 'Explicit Config' : 'Zero-Config'})`);
-
-      if (this.useConfig) {
-        // Refined catch-all configuration using empty strings as per documentation preferred style
-        const config = {
-          rules: [
-            {
-              eventTypeMatcher: { actor: "", action: "", target: "" },
-              exclude: false,
-              includeFullState: true
-            }
-          ]
-        };
-
-        console.log('📤 [ADAPTER] Sending Refined GRID Configuration Payload...');
-        this.gridWs?.send(JSON.stringify(config));
+// 2. The "Open Access" Schema (What GRID Gives Us)
+const GRAPHQL_QUERY = `
+  query GetMatchState($id: ID!) {
+    series(id: $id) {
+      id
+      title {
+        nameShort
       }
-    });
-
-    this.gridWs.on('message', (data) => {
-      const tx = JSON.parse(data.toString()) as GridTransaction;
-      console.log(`📡 [ADAPTER] Incoming Transaction: ${tx.id} | Action: ${tx.action}`);
-      this.processTransaction(tx);
-    });
-
-    this.gridWs.on('close', (code, reason) => {
-      console.log(`🔌 [ADAPTER] GRID Connection Closed (${code}): ${reason || 'No reason'}`);
-
-      // Strategy: 
-      // If we were on Zero-Config and it closed immediately, switch to Explicit Config
-      if (!this.useConfig && this.connectionAttempts < 5) {
-        console.log('🔄 [ADAPTER] Zero-Config closed. Switching to Explicit Configuration Handshake...');
-        this.useConfig = true;
-      }
-
-      // Respect the "5 requests per minute" limit with a 15s delay
-      console.log('⏳ [ADAPTER] Reconnecting in 15 seconds...');
-      setTimeout(() => this.connectToGrid(), 15000);
-    });
-
-    this.gridWs.on('error', (e) => {
-      console.error('❌ [ADAPTER] GRID WS Error:', e.message);
-      if (e.message.includes('404')) {
-        console.log('⚠️ [ADAPTER] GRID Series Events API returned 404. This might be due to incorrect Match ID or restricted permissions.');
-        console.log('🔄 [ADAPTER] Falling back to MOCK mode for testing safety...');
-        this.isMock = true;
-        this.startMockReplay();
-      }
-    });
-  }
-
-  private processTransaction(tx: GridTransaction) {
-    // Extract state from transaction
-    const latestGame = tx.seriesState?.games?.[tx.seriesState.games.length - 1];
-
-    // GRID CS2 Specific mapping: 
-    // Scores and rounds are extracted from the seriesState.
-    const currentRound = latestGame?.state?.round || this.lastState.round;
-    const tScore = latestGame?.state?.team1Score || latestGame?.team1Score || this.lastState.t_score;
-    const ctScore = latestGame?.state?.team2Score || latestGame?.team2Score || this.lastState.ct_score;
-    const isPlanted = latestGame?.state?.bombPlanted || tx.action === 'planted' || this.lastState.bomb;
-
-    const event: EngineSeriesEvent = {
-      type: 'game_event',
-      payload: {
-        series_id: this.matchId,
-        event_type: `${tx.actor?.type}-${tx.action}-${tx.target?.type}`,
-        game_state: {
-          round: currentRound,
-          bomb_planted: isPlanted,
-          terrorist_score: tScore,
-          ct_score: ctScore,
-          last_action: `${tx.actor?.type} ${tx.action} ${tx.target?.type}`
+      games {
+        id
+        status
+        segments {
+          number
+          team1Score
+          team2Score
+          isMapFinished
         }
       }
-    };
-
-    if (this.engineWs?.readyState === WebSocket.OPEN) {
-      this.engineWs.send(JSON.stringify(event));
-      this.lastState = { round: currentRound, t_score: tScore, ct_score: ctScore, bomb: isPlanted };
     }
   }
+`;
 
-  private startMockReplay() {
-    console.log('🎭 [ADAPTER] Starting "Tryhard" Mock Replay...');
-    let round = 14;
-    let tScore = 8;
-    let ctScore = 5;
+// --- STATE TRACKING ---
+let engineSocket: WebSocket | null = null;
+let lastRound = -1;
+let isPolling = false;
 
-    const sequence = [
-      { type: 'round-started', delay: 1000 },
-      { type: 'player-killed-player', delay: 3000 },
-      { type: 'player-planted-bomb', delay: 5000 },
-      { type: 'bomb-exploded', delay: 10000 },
-      { type: 'round-ended', delay: 2000 }
-    ];
+// --- CONNECTION LOGIC ---
 
-    let i = 0;
-    const run = () => {
-      const step = sequence[i % sequence.length];
-      if (!step) return;
+function connectToEngine() {
+  console.log(`🔌 [ADAPTER] Connecting to Engine at ${ENGINE_URL}...`);
+  engineSocket = new WebSocket(ENGINE_URL);
 
-      if (step.type === 'round-ended') {
-        tScore++;
-        round++;
-      }
+  engineSocket.on('open', () => {
+    console.log("✅ [ADAPTER] CONNECTED TO ENGINE (Ready to Push)");
+    // Start Polling only when engine is ready, and ensure only one interval exists
+    if (!isPolling) {
+      isPolling = true;
+      startGridPolling();
+    }
+  });
 
-      // Generate dynamic prop prices
-      const markets = [
-        { id: "series_winner", title: "Match Winner", yes: 60 + (Math.random() * 10), no: 30 + (Math.random() * 10), volume: "128k" },
-        { id: "r15_winner", title: "Round 15 Winner", yes: 50 + (Math.random() * 5), no: 45 + (Math.random() * 5), volume: "12k" },
-        { id: "bomb_prop", title: "Bomb Planted in Round 15?", yes: step.type === 'player-planted-bomb' ? 99 : 20 + (Math.random() * 20), no: step.type === 'player-planted-bomb' ? 1 : 60 + (Math.random() * 20), volume: "5k" }
-      ];
+  engineSocket.on('close', () => {
+    console.log("❌ [ADAPTER] Engine Disconnected. Retrying in 5s...");
+    setTimeout(connectToEngine, 5000);
+  });
 
-      const event: EngineSeriesEvent = {
-        type: 'game_event',
-        payload: {
-          series_id: this.matchId,
-          event_type: step.type,
-          game_state: {
-            round: round,
-            bomb_planted: step.type === 'player-planted-bomb',
-            terrorist_score: tScore,
-            ct_score: ctScore,
-            last_action: step.type
-          },
-          markets: markets
-        }
-      };
-
-      if (this.engineWs?.readyState === WebSocket.OPEN) {
-        this.engineWs.send(JSON.stringify(event));
-      }
-
-      i++;
-      setTimeout(run, step.delay);
-    };
-
-    run();
-  }
+  engineSocket.on('error', (err) => {
+    console.error("❌ [ADAPTER] Engine Socket Error:", err.message);
+  });
 }
 
-const GRID_API_KEY = process.env.GRID_API_KEY || '';
-const MATCH_ID = process.env.MATCH_ID || 'cs2-demo-match';
-const ENGINE_URL = process.env.ENGINE_URL || 'ws://localhost:8080';
+// --- POLLING LOGIC ---
 
-new HighFidelityAdapter(MATCH_ID, ENGINE_URL, GRID_API_KEY).start();
+async function startGridPolling() {
+  console.log(`📡 [ADAPTER] Starting GRID Polling for Match ${MATCH_ID}...`);
+
+  setInterval(async () => {
+    try {
+      if (!engineSocket || engineSocket.readyState !== WebSocket.OPEN) {
+        return;
+      }
+
+      // 1. POLL GRID (HTTP Request)
+      const response = await axios.post(
+        'https://api.grid.gg/central-data/graphql',
+        {
+          query: GRAPHQL_QUERY,
+          variables: { id: MATCH_ID }
+        },
+        {
+          headers: {
+            'x-grid-api-key': GRID_API_KEY,
+            'Content-Type': 'application/json'
+          }
+        }
+      );
+
+      // 2. PARSE DATA
+      const series = response.data?.data?.series;
+      if (!series || !series.games || series.games.length === 0) {
+        return;
+      }
+
+      // Get the latest game and latest segment (round)
+      const currentGame = series.games[series.games.length - 1];
+      const segments = currentGame.segments;
+
+      if (!segments || segments.length === 0) {
+        return;
+      }
+
+      const currentSegment = segments[segments.length - 1];
+
+      // 3. DETECT STATE CHANGE (Poll-based change detection)
+      if (currentSegment.number > lastRound || currentSegment.team1Score !== 0 || currentSegment.team2Score !== 0) {
+        // Map to standard internal logs
+        if (currentSegment.number > lastRound) {
+          console.log(`⚡ [ADAPTER] NEW ROUND DETECTED: ${currentSegment.number} | Score: ${currentSegment.team1Score}-${currentSegment.team2Score}`);
+        }
+
+        // 4. MAP TO COMMERCIAL SCHEMA
+        const payload: EngineSeriesEvent = {
+          type: 'series_state',
+          payload: {
+            series_id: series.id,
+            timestamp: new Date().toISOString(),
+            game_state: {
+              map: series.title?.nameShort || "unknown",
+              round: currentSegment.number,
+              terrorist_score: currentSegment.team1Score,
+              ct_score: currentSegment.team2Score,
+              bomb_planted: false,
+              phase: currentGame.status === 'Ended' || currentSegment.isMapFinished ? 'ended' : 'live',
+              last_action: `Round ${currentSegment.number} Progress`
+            }
+          }
+        };
+
+        // 5. PUSH TO ENGINE
+        engineSocket.send(JSON.stringify(payload));
+
+        // Update local state
+        lastRound = currentSegment.number;
+      }
+
+    } catch (error: any) {
+      console.error("❌ [ADAPTER] Polling Error:", error.message);
+      if (error.response?.data) {
+        console.error("   GRID Payload Error:", JSON.stringify(error.response.data));
+      }
+    }
+  }, POLL_INTERVAL);
+}
+
+// --- START ---
+connectToEngine();
