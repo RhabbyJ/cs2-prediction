@@ -8,10 +8,12 @@ export async function GET(request: Request) {
 
   const apiKey = process.env.GRID_API_KEY;
   const endpoint = process.env.GRID_CENTRAL_DATA_URL || DEFAULT_ENDPOINT;
+  const requestId = crypto.randomUUID();
 
   if (!apiKey) {
+    console.error(`[grid][${requestId}] Missing GRID_API_KEY`);
     return NextResponse.json(
-      { error: "Missing GRID_API_KEY" },
+      { error: "Missing GRID_API_KEY", requestId },
       { status: 500 }
     );
   }
@@ -26,27 +28,62 @@ export async function GET(request: Request) {
     }
   `;
 
-  const response = await fetch(endpoint, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "x-grid-api-key": apiKey,
-    },
-    body: JSON.stringify({
-      query,
-      variables: { id },
-    }),
-    cache: "no-store",
-  });
+  let response: Response;
+  let rawText = "";
+  try {
+    response = await fetch(endpoint, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-grid-api-key": apiKey,
+      },
+      body: JSON.stringify({
+        query,
+        variables: { id },
+      }),
+      cache: "no-store",
+    });
 
-  const data = await response.json();
-
-  if (!response.ok || data.errors) {
+    rawText = await response.text();
+  } catch (err: any) {
+    console.error(`[grid][${requestId}] Fetch failed`, err?.message || err);
     return NextResponse.json(
-      { error: "GRID API error", details: data.errors || data },
+      { error: "GRID fetch failed", requestId },
       { status: 502 }
     );
   }
 
-  return NextResponse.json(data.data);
+  let data: any = null;
+  try {
+    data = rawText ? JSON.parse(rawText) : null;
+  } catch {
+    data = rawText;
+  }
+
+  if (!response.ok || data.errors) {
+    console.error(
+      `[grid][${requestId}] GRID API error`,
+      JSON.stringify(
+        {
+          status: response.status,
+          statusText: response.statusText,
+          endpoint,
+          response: data,
+        },
+        null,
+        2
+      )
+    );
+    return NextResponse.json(
+      {
+        error: "GRID API error",
+        details: data?.errors || data,
+        status: response.status,
+        requestId,
+      },
+      { status: 502 }
+    );
+  }
+
+  return NextResponse.json({ ...data.data, requestId });
 }
