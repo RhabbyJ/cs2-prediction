@@ -35,7 +35,9 @@ export async function GET(request: Request) {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
+        // Send both to rule out header-name mismatch.
         "x-grid-api-key": apiKey,
+        "x-api-key": apiKey,
       },
       body: JSON.stringify({
         query,
@@ -68,6 +70,8 @@ export async function GET(request: Request) {
           status: response.status,
           statusText: response.statusText,
           endpoint,
+          apiKeyPresent: Boolean(apiKey),
+          apiKeyLength: apiKey?.length || 0,
           response: data,
         },
         null,
@@ -79,6 +83,9 @@ export async function GET(request: Request) {
         error: "GRID API error",
         details: data?.errors || data,
         status: response.status,
+        endpoint,
+        apiKeyPresent: Boolean(apiKey),
+        apiKeyLength: apiKey?.length || 0,
         requestId,
       },
       { status: 502 }
