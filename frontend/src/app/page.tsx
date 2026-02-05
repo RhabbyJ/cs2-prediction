@@ -27,6 +27,7 @@ export default function CS2Dashboard() {
 
   const [matches, setMatches] = useState<any[]>([]);
   const [selectedMarket, setSelectedMarket] = useState(markets[0]);
+  const [gridData, setGridData] = useState<any[]>([]);
 
   useEffect(() => {
     const ws = new WebSocket(process.env.NEXT_PUBLIC_ENGINE_URL || "ws://localhost:8080/ws");
@@ -43,6 +44,9 @@ export default function CS2Dashboard() {
         });
         if (data.payload.markets) {
           setMarkets(data.payload.markets);
+        }
+        if (data.payload.discovery) {
+          setGridData(data.payload.discovery);
         }
       } else if (data.type === "match_occurred") {
         setMatches(prev => [data.payload, ...prev].slice(0, 10));
@@ -133,6 +137,39 @@ export default function CS2Dashboard() {
                   </div>
                 </div>
               ))}
+            </div>
+
+            {/* GRID EXPLORER (REAL DATA) */}
+            <div className="bg-[#141414] border border-[#262626] rounded-xl overflow-hidden mt-6 mb-6">
+              <div className="p-4 bg-blue-900/10 border-b border-[#262626] flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Globe className="w-4 h-4 text-blue-400" />
+                  <span className="text-[10px] font-black uppercase tracking-widest text-zinc-400">GRID REAL-TIME EXPLORER (OPEN ACCESS)</span>
+                </div>
+                <span className="text-[9px] font-mono text-blue-500/50">MATCH DISCOVERY FEED</span>
+              </div>
+              <div className="p-4 space-y-3">
+                {gridData && gridData.length > 0 ? gridData.map((item, idx) => (
+                  <div key={idx} className="flex justify-between items-center bg-black/40 p-3 rounded border border-zinc-800/50">
+                    <div>
+                      <div className="text-[10px] text-zinc-500 font-bold uppercase">{item.tournament}</div>
+                      <div className="text-sm font-bold flex items-center gap-2">
+                        <span>{item.teams[0]}</span>
+                        <span className="text-zinc-600 text-[10px]">vs</span>
+                        <span>{item.teams[1]}</span>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <div className="text-[9px] font-mono text-zinc-600">ID: {item.id}</div>
+                      <div className="text-[10px] text-blue-500 font-bold uppercase tracking-tighter mt-1">CONNECTIVITY VERIFIED</div>
+                    </div>
+                  </div>
+                )) : (
+                  <div className="text-center py-6 text-zinc-600 text-xs italic font-mono">
+                    Waiting for real GRID telemetry...
+                  </div>
+                )}
+              </div>
             </div>
 
             {/* Audit Log (Bottom) */}

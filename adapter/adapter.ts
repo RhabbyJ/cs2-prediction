@@ -149,5 +149,63 @@ function startMockReplay() {
   }, 3000); // Every 3 seconds
 }
 
+// --- GRID DATA DISCOVERY ---
+async function startGridDiscovery() {
+  console.log(`📡 [ADAPTER] Starting GRID Central Data Discovery...`);
+
+  setInterval(async () => {
+    try {
+      if (!engineSocket || engineSocket.readyState !== WebSocket.OPEN) return;
+
+      const response = await axios.post(
+        'https://api-op.grid.gg/central-data/graphql',
+        {
+          query: `
+            query GetUpcomingSeries {
+              allSeries(first: 5, orderBy: StartTimeScheduled) {
+                edges {
+                  node {
+                    id
+                    title { nameShortened }
+                    tournament { nameShortened }
+                    teams { baseInfo { name } }
+                  }
+                }
+              }
+            }
+          `
+        },
+        {
+          headers: {
+            'x-grid-api-key': GRID_API_KEY,
+            'Content-Type': 'application/json'
+          }
+        }
+      );
+
+      const items = response.data?.data?.allSeries?.edges || [];
+      const discoveryData = items.map((edge: any) => ({
+        id: edge.node.id,
+        title: edge.node.title?.nameShortened || 'Unknown Series',
+        tournament: edge.node.tournament?.nameShortened || 'Unknown Tournament',
+        teams: edge.node.teams?.map((t: any) => t.baseInfo?.name || 'Unknown Team') || []
+      }));
+
+      if (discoveryData.length > 0) {
+        console.log(`📡 [ADAPTER] GRID Discovery: Found ${discoveryData.length} active series.`);
+        engineSocket.send(JSON.stringify({
+          type: 'game_event',
+          payload: {
+            discovery: discoveryData
+          }
+        }));
+      }
+    } catch (error: any) {
+      console.error("❌ [ADAPTER] Discovery Error:", error.message);
+    }
+  }, 10000); // Every 10 seconds
+}
+
 // --- START ---
 connectToEngine();
+startGridDiscovery();
