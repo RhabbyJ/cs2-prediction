@@ -107,9 +107,9 @@ async function startGridPolling() {
         return;
       }
 
-      // 1. POLL GRID (HTTP Request)
+      // 1. POLL GRID (HTTP Request) - Use Live Data Feed endpoint for seriesState
       const response = await axios.post(
-        'https://api.grid.gg/central-data/graphql',
+        'https://api-op.grid.gg/live-data-feed/series-state/graphql',
         {
           query: GRAPHQL_QUERY,
           variables: { id: MATCH_ID }
