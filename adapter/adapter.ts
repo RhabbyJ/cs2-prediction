@@ -5,19 +5,16 @@ import dotenv from 'dotenv';
 dotenv.config();
 
 // --- CONFIGURATION ---
-const GRID_API_KEY = process.env.GRID_API_KEY || ''; // Your Open Access Key
-let ENGINE_URL = process.env.ENGINE_URL || 'ws://engine:8080/ws'; // Internal Docker URL by default
-const MATCH_ID = process.env.MATCH_ID || '28'; // Default CS2 Loop ID
-const POLL_INTERVAL = 2000; // 2 seconds
+const GRID_API_KEY = process.env.GRID_API_KEY || '';
+let ENGINE_URL = process.env.ENGINE_URL || 'ws://engine:8080/ws';
+const MATCH_ID = process.env.MATCH_ID || '28';
+const POLL_INTERVAL = 2000;
 
-// Ensure engine URL always has /ws suffix if it's the trading endpoint
 if (!ENGINE_URL.endsWith('/ws')) {
   ENGINE_URL = ENGINE_URL.replace(/\/$/, '') + '/ws';
 }
 
-// --- SCHEMA DEFINITIONS ---
-
-// 1. The "Commercial" Schema (What the Engine Expects)
+// --- SCHEMA ---
 interface EngineSeriesEvent {
   type: 'series_state';
   payload: {
@@ -35,54 +32,21 @@ interface EngineSeriesEvent {
   };
 }
 
-// 2. The corrected "Open Access" Schema for Series State
-const GRAPHQL_QUERY = `
-  query GetSeriesState($id: ID!) {
-    seriesState(id: $id) {
-      id
-      title {
-        nameShortened
-      }
-      games {
-        id
-        finished
-        teams {
-          id
-          name
-          score
-        }
-        segments {
-          id
-          sequenceNumber
-          finished
-          teams {
-            id
-            name
-            won
-          }
-        }
-      }
-    }
-  }
-`;
-
-// --- STATE TRACKING ---
+// --- STATE ---
 let engineSocket: WebSocket | null = null;
-let lastRound = -1;
 let isPolling = false;
+let useMockMode = false;
 
-// --- CONNECTION LOGIC ---
-
+// --- ENGINE CONNECTION ---
 function connectToEngine() {
   console.log(`🔌 [ADAPTER] Connecting to Engine at ${ENGINE_URL}...`);
   engineSocket = new WebSocket(ENGINE_URL);
 
   engineSocket.on('open', () => {
-    console.log("✅ [ADAPTER] CONNECTED TO ENGINE (Ready to Push)");
-    // Start Polling only when engine is ready, and ensure only one interval exists
+    console.log("✅ [ADAPTER] CONNECTED TO ENGINE");
     if (!isPolling) {
       isPolling = true;
-      startGridPolling();
+      attemptGridConnection();
     }
   });
 
@@ -96,110 +60,94 @@ function connectToEngine() {
   });
 }
 
-// --- POLLING LOGIC ---
+// --- GRID CONNECTION ATTEMPT ---
+async function attemptGridConnection() {
+  console.log(`📡 [ADAPTER] Testing GRID API access for Match ${MATCH_ID}...`);
 
-async function startGridPolling() {
-  console.log(`📡 [ADAPTER] Starting GRID Polling for Match ${MATCH_ID}...`);
-
-  setInterval(async () => {
-    try {
-      if (!engineSocket || engineSocket.readyState !== WebSocket.OPEN) {
-        return;
-      }
-
-      // 1. POLL GRID (HTTP Request) - Use Live Data Feed endpoint for seriesState
-      const response = await axios.post(
-        'https://api-op.grid.gg/live-data-feed/series-state/graphql',
-        {
-          query: GRAPHQL_QUERY,
-          variables: { id: MATCH_ID }
-        },
-        {
-          headers: {
-            'x-grid-api-key': GRID_API_KEY,
-            'Content-Type': 'application/json'
-          }
+  try {
+    // Try Central Data Feed first (Open Access)
+    const response = await axios.post(
+      'https://api.grid.gg/central-data/graphql',
+      {
+        query: `query { series(id: "${MATCH_ID}") { id } }`,
+      },
+      {
+        headers: {
+          'x-grid-api-key': GRID_API_KEY,
+          'Content-Type': 'application/json'
         }
-      );
-
-      // 2. PARSE DATA - Add verbose logging
-      const rawData = response.data;
-      console.log(`🔍 [DEBUG] Raw GRID Response:`, JSON.stringify(rawData, null, 2).substring(0, 500));
-
-      const seriesState = rawData?.data?.seriesState;
-      if (!seriesState) {
-        console.log(`⚠️ [DEBUG] No seriesState in response. Possible: match inactive or ID invalid.`);
-        return;
       }
+    );
 
-      if (!seriesState.games || seriesState.games.length === 0) {
-        console.log(`⚠️ [DEBUG] seriesState found, but no games yet. Series may be scheduled but not started.`);
-        return;
-      }
-
-      // Get the latest game and latest segment (round)
-      const currentGame = seriesState.games[seriesState.games.length - 1];
-      const segments = currentGame.segments;
-
-      if (!segments || segments.length === 0) {
-        console.log(`⚠️ [DEBUG] Game found, but no segments/rounds yet. Game may be in warmup.`);
-        return;
-      }
-
-      const currentSegment = segments[segments.length - 1];
-      const team1 = currentGame.teams[0];
-      const team2 = currentGame.teams[1];
-
-      // 3. DETECT STATE CHANGE (Using sequenceNumber from segments)
-      const currentRound = currentSegment.sequenceNumber;
-      const tScore = team1?.score || 0;
-      const ctScore = team2?.score || 0;
-
-      if (currentRound > lastRound || (currentRound === lastRound && (tScore !== lastTScore || ctScore !== lastCTScore))) {
-
-        if (currentRound > lastRound) {
-          console.log(`⚡ [ADAPTER] NEW ROUND DETECTED: ${currentRound} | Score: ${tScore}-${ctScore}`);
-        }
-
-        // 4. MAP TO COMMERCIAL SCHEMA
-        const payload: EngineSeriesEvent = {
-          type: 'series_state',
-          payload: {
-            series_id: seriesState.id,
-            timestamp: new Date().toISOString(),
-            game_state: {
-              map: seriesState.title?.nameShortened || "unknown",
-              round: currentRound,
-              terrorist_score: tScore,
-              ct_score: ctScore,
-              bomb_planted: false,
-              phase: currentGame.finished || currentSegment.finished ? 'ended' : 'live',
-              last_action: `Round ${currentRound} in Progress`
-            }
-          }
-        };
-
-        // 5. PUSH TO ENGINE
-        engineSocket.send(JSON.stringify(payload));
-
-        // Update local state
-        lastRound = currentRound;
-        lastTScore = tScore;
-        lastCTScore = ctScore;
-      }
-
-    } catch (error: any) {
-      console.error("❌ [ADAPTER] Polling Error:", error.message);
-      if (error.response?.data) {
-        console.error("   GRID Payload Error:", JSON.stringify(error.response.data));
-      }
+    if (response.data?.data?.series) {
+      console.log(`✅ [ADAPTER] GRID API Key Valid! Series ${MATCH_ID} exists.`);
+      console.log(`⚠️ [ADAPTER] However, Open Access only provides static data.`);
+      console.log(`⚠️ [ADAPTER] Live round-by-round data requires Commercial Tier.`);
+      console.log(`🎭 [ADAPTER] Falling back to MOCK MODE for demo...`);
+    } else {
+      console.log(`⚠️ [ADAPTER] Series ${MATCH_ID} not found or API error.`);
+      console.log(`🎭 [ADAPTER] Starting MOCK MODE...`);
     }
-  }, POLL_INTERVAL);
+  } catch (error: any) {
+    console.log(`⚠️ [ADAPTER] GRID API check failed: ${error.message}`);
+    console.log(`🎭 [ADAPTER] Starting MOCK MODE...`);
+  }
+
+  // Always fall back to mock mode for now (until Commercial access)
+  useMockMode = true;
+  startMockReplay();
 }
 
-// Track scores for change detection within the same round
-let lastTScore = -1;
-let lastCTScore = -1;
+// --- MOCK REPLAY ---
+function startMockReplay() {
+  console.log('🎭 [ADAPTER] Mock Mode Active - Simulating CS2 Match...');
+
+  let round = 1;
+  let tScore = 0;
+  let ctScore = 0;
+  let bombPlanted = false;
+
+  setInterval(() => {
+    if (!engineSocket || engineSocket.readyState !== WebSocket.OPEN) return;
+
+    // Simulate round progression
+    const events = ['round_start', 'kill', 'kill', 'bomb_plant', 'round_end'];
+    const randomEvent = events[Math.floor(Math.random() * events.length)];
+
+    if (randomEvent === 'bomb_plant') {
+      bombPlanted = true;
+    } else if (randomEvent === 'round_end') {
+      // Randomly award round to a team
+      if (Math.random() > 0.5) {
+        tScore++;
+      } else {
+        ctScore++;
+      }
+      round++;
+      bombPlanted = false;
+      console.log(`⚡ [MOCK] Round ${round} | Score: ${tScore}-${ctScore}`);
+    }
+
+    const payload: EngineSeriesEvent = {
+      type: 'series_state',
+      payload: {
+        series_id: MATCH_ID,
+        timestamp: new Date().toISOString(),
+        game_state: {
+          map: 'de_mirage',
+          round: round,
+          terrorist_score: tScore,
+          ct_score: ctScore,
+          bomb_planted: bombPlanted,
+          phase: round > 30 ? 'ended' : 'live',
+          last_action: randomEvent
+        }
+      }
+    };
+
+    engineSocket.send(JSON.stringify(payload));
+  }, 3000); // Every 3 seconds
+}
 
 // --- START ---
 connectToEngine();
