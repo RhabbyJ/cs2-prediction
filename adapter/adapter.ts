@@ -122,9 +122,18 @@ async function startGridPolling() {
         }
       );
 
-      // 2. PARSE DATA
-      const seriesState = response.data?.data?.seriesState;
-      if (!seriesState || !seriesState.games || seriesState.games.length === 0) {
+      // 2. PARSE DATA - Add verbose logging
+      const rawData = response.data;
+      console.log(`🔍 [DEBUG] Raw GRID Response:`, JSON.stringify(rawData, null, 2).substring(0, 500));
+
+      const seriesState = rawData?.data?.seriesState;
+      if (!seriesState) {
+        console.log(`⚠️ [DEBUG] No seriesState in response. Possible: match inactive or ID invalid.`);
+        return;
+      }
+
+      if (!seriesState.games || seriesState.games.length === 0) {
+        console.log(`⚠️ [DEBUG] seriesState found, but no games yet. Series may be scheduled but not started.`);
         return;
       }
 
@@ -133,6 +142,7 @@ async function startGridPolling() {
       const segments = currentGame.segments;
 
       if (!segments || segments.length === 0) {
+        console.log(`⚠️ [DEBUG] Game found, but no segments/rounds yet. Game may be in warmup.`);
         return;
       }
 
