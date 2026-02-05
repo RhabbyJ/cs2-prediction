@@ -71,6 +71,8 @@ class HighFidelityAdapter {
   private gridWs: WebSocket | null = null;
   private lastState: any = { round: 1, t_score: 0, ct_score: 0, bomb: false };
   private isMock: boolean = false;
+  private useConfig: boolean = false;
+  private connectionAttempts: number = 0;
 
   constructor(
     private matchId: string,
@@ -97,6 +99,8 @@ class HighFidelityAdapter {
     if (this.isMock) {
       this.startMockReplay();
     } else {
+      // Start with useConfig=false (Default/Zero-Config mode)
+      this.useConfig = false;
       this.connectToGrid();
     }
   }
@@ -109,28 +113,33 @@ class HighFidelityAdapter {
   }
 
   private connectToGrid() {
-    console.log(`📡 [ADAPTER] Connecting to GRID Live Data Feed for Series: ${this.matchId}`);
-    // Official format: wss://api.grid.gg/live-data-feed/series/{seriesId}?key={apiKey}&useConfig=true
-    const gridUrl = `wss://api.grid.gg/live-data-feed/series/${this.matchId}?key=${this.apiKey}&useConfig=true`;
+    this.connectionAttempts++;
+    console.log(`📡 [ADAPTER] Connection Attempt #${this.connectionAttempts}`);
+    console.log(`📡 [ADAPTER] Connecting to GRID (useConfig=${this.useConfig}) for Series: ${this.matchId}`);
+
+    // Official format: wss://api.grid.gg/live-data-feed/series/{seriesId}?key={apiKey}&useConfig={true|false}
+    const gridUrl = `wss://api.grid.gg/live-data-feed/series/${this.matchId}?key=${this.apiKey}&useConfig=${this.useConfig}`;
 
     this.gridWs = new WebSocket(gridUrl);
 
     this.gridWs.on('open', () => {
-      console.log('✅ [ADAPTER] Connected to GRID Live Data Feed');
+      console.log(`✅ [ADAPTER] GRID WebSocket Opened (Mode: ${this.useConfig ? 'Explicit Config' : 'Zero-Config'})`);
 
-      // Send catch-all configuration to start the stream as per docs
-      const config = {
-        rules: [
-          {
-            eventTypeMatcher: { actor: "*", action: "*", target: "*" },
-            exclude: false,
-            includeFullState: true
-          }
-        ]
-      };
+      if (this.useConfig) {
+        // Refined catch-all configuration using empty strings as per documentation preferred style
+        const config = {
+          rules: [
+            {
+              eventTypeMatcher: { actor: "", action: "", target: "" },
+              exclude: false,
+              includeFullState: true
+            }
+          ]
+        };
 
-      console.log('📤 [ADAPTER] Sending GRID Configuration Payload...');
-      this.gridWs?.send(JSON.stringify(config));
+        console.log('📤 [ADAPTER] Sending Refined GRID Configuration Payload...');
+        this.gridWs?.send(JSON.stringify(config));
+      }
     });
 
     this.gridWs.on('message', (data) => {
@@ -141,7 +150,16 @@ class HighFidelityAdapter {
 
     this.gridWs.on('close', (code, reason) => {
       console.log(`🔌 [ADAPTER] GRID Connection Closed (${code}): ${reason || 'No reason'}`);
-      // Increase delay to 15s to respect the "5 requests per minute" limit
+
+      // Strategy: 
+      // If we were on Zero-Config and it closed immediately, switch to Explicit Config
+      if (!this.useConfig && this.connectionAttempts < 5) {
+        console.log('🔄 [ADAPTER] Zero-Config closed. Switching to Explicit Configuration Handshake...');
+        this.useConfig = true;
+      }
+
+      // Respect the "5 requests per minute" limit with a 15s delay
+      console.log('⏳ [ADAPTER] Reconnecting in 15 seconds...');
       setTimeout(() => this.connectToGrid(), 15000);
     });
 
