@@ -23,5 +23,5 @@ export async function GET(request: Request) {
     );
   }
 
-  return NextResponse.json({ ...result.data, requestId: result.requestId });
+  return NextResponse.json({ data: result.data, requestId: result.requestId });
 }

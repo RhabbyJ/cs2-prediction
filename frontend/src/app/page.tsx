@@ -97,7 +97,7 @@ export default function CS2Dashboard() {
           throw new Error(data?.error || "GRID API error");
         }
         if (!cancelled) {
-          setGridTournament(data.tournament || null);
+          setGridTournament(data?.data?.tournament || null);
         }
       } catch (err: any) {
         if (!cancelled) {
