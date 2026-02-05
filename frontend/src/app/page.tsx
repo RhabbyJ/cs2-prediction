@@ -5,6 +5,8 @@ import { Globe, Shield } from "lucide-react";
 import {
   getTournamentQuery,
   getSeriesQuery,
+  getAllSeriesNext24hQuery,
+  getSeriesFormatsQuery,
   getTeamQuery,
   getPlayerQuery,
   getEsportsOrganizationQuery,
@@ -114,6 +116,8 @@ export default function CS2Dashboard() {
   const queryMap: Record<string, string> = {
     tournaments: getTournamentQuery,
     series: getSeriesQuery,
+    seriesNext24h: getAllSeriesNext24hQuery,
+    seriesFormats: getSeriesFormatsQuery,
     teams: getTeamQuery,
     players: getPlayerQuery,
     orgs: getEsportsOrganizationQuery,
@@ -131,7 +135,15 @@ export default function CS2Dashboard() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           query: queryMap[explorerEntity],
-          variables: { id: explorerId },
+          variables:
+            explorerEntity === "seriesNext24h"
+              ? {
+                  start: new Date().toISOString(),
+                  end: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+                }
+              : explorerEntity === "seriesFormats"
+                ? undefined
+                : { id: explorerId },
         }),
       });
       const data = await res.json();
@@ -279,6 +291,8 @@ export default function CS2Dashboard() {
                     >
                       <option value="tournaments">Tournaments</option>
                       <option value="series">Series</option>
+                      <option value="seriesNext24h">All Series Next 24h</option>
+                      <option value="seriesFormats">Series Formats</option>
                       <option value="orgs">Esports Organizations</option>
                       <option value="teams">Teams</option>
                       <option value="players">Players</option>
@@ -292,7 +306,8 @@ export default function CS2Dashboard() {
                       className="mt-1 w-full bg-black/40 border border-zinc-800 rounded px-3 py-2 text-sm"
                       value={explorerId}
                       onChange={(e) => setExplorerId(e.target.value)}
-                      placeholder="1"
+                      placeholder={explorerEntity === "seriesNext24h" || explorerEntity === "seriesFormats" ? "N/A" : "1"}
+                      disabled={explorerEntity === "seriesNext24h" || explorerEntity === "seriesFormats"}
                     />
                   </div>
                   <div className="flex items-end">

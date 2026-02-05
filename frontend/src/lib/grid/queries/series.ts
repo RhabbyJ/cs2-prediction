@@ -3,27 +3,21 @@ export const getSeriesQuery = `
     series(id: $id) {
       id
       startTimeScheduled
-      format {
-        id
-        name
-      }
       title {
-        id
-        name
         nameShortened
       }
       tournament {
-        id
+        nameShortened
+      }
+      format {
         name
         nameShortened
       }
-      participants {
-        scoreAdvantage
-        team {
-          id
+      teams {
+        baseInfo {
           name
-          nameShortened
         }
+        scoreAdvantage
       }
     }
   }

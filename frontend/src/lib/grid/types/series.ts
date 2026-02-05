@@ -1,28 +1,20 @@
-export type SeriesParticipant = {
-  scoreAdvantage?: number | null;
-  team?: {
-    id: string;
-    name: string;
-    nameShortened?: string | null;
-  } | null;
-};
-
 export type Series = {
   id: string;
   startTimeScheduled?: string | null;
   format?: {
-    id: string;
     name: string;
+    nameShortened?: string | null;
   } | null;
   title?: {
-    id: string;
-    name: string;
     nameShortened?: string | null;
   } | null;
   tournament?: {
-    id: string;
-    name: string;
     nameShortened?: string | null;
   } | null;
-  participants?: SeriesParticipant[] | null;
+  teams?: Array<{
+    baseInfo?: {
+      name?: string | null;
+    } | null;
+    scoreAdvantage?: number | null;
+  }> | null;
 };

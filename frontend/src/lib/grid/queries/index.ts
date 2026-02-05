@@ -1,5 +1,7 @@
 export { getTournamentQuery } from "./tournaments";
 export { getSeriesQuery } from "./series";
+export { getAllSeriesNext24hQuery } from "./seriesList";
+export { getSeriesFormatsQuery } from "./seriesFormats";
 export { getTeamQuery } from "./teams";
 export { getPlayerQuery } from "./players";
 export { getEsportsOrganizationQuery } from "./orgs";
