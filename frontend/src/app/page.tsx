@@ -1,14 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { 
-  Activity, 
-  ShieldCheck, 
-  Globe, 
-  Zap,
-  Shield,
-  Clock
-} from "lucide-react";
+import { Globe, Shield } from "lucide-react";
 
 export default function CS2Dashboard() {
   const [gameState, setGameState] = useState({
@@ -21,6 +14,12 @@ export default function CS2Dashboard() {
 
   const [gridData, setGridData] = useState<any[]>([]);
   const [connectionStatus, setConnectionStatus] = useState("CONNECTING");
+  const [gridTournament, setGridTournament] = useState<{
+    id: string;
+    name: string;
+    nameShortened?: string | null;
+  } | null>(null);
+  const [gridError, setGridError] = useState<string | null>(null);
 
   useEffect(() => {
     let ws: WebSocket | null = null;
@@ -74,6 +73,30 @@ export default function CS2Dashboard() {
     return () => {
       ws?.close();
       clearTimeout(reconnectTimeout);
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    const loadGridStatic = async () => {
+      try {
+        const res = await fetch("/api/grid/tournaments?id=1");
+        const data = await res.json();
+        if (!res.ok) {
+          throw new Error(data?.error || "GRID API error");
+        }
+        if (!cancelled) {
+          setGridTournament(data.tournament || null);
+        }
+      } catch (err: any) {
+        if (!cancelled) {
+          setGridError(err?.message || "Failed to load GRID data");
+        }
+      }
+    };
+    loadGridStatic();
+    return () => {
+      cancelled = true;
     };
   }, []);
 
@@ -151,6 +174,22 @@ export default function CS2Dashboard() {
                 <span className="text-[9px] font-mono text-blue-500/50">MATCH DISCOVERY FEED</span>
               </div>
               <div className="p-4 space-y-3">
+                <div className="bg-black/40 p-3 rounded border border-zinc-800/50">
+                  <div className="text-[10px] text-zinc-500 font-bold uppercase">Static Data (Tournament)</div>
+                  {gridError ? (
+                    <div className="text-xs text-red-400 mt-1">{gridError}</div>
+                  ) : gridTournament ? (
+                    <div className="text-sm font-bold mt-1">
+                      {gridTournament.name}{" "}
+                      <span className="text-[10px] text-zinc-500 font-mono">
+                        ({gridTournament.id}{gridTournament.nameShortened ? ` · ${gridTournament.nameShortened}` : ""})
+                      </span>
+                    </div>
+                  ) : (
+                    <div className="text-xs text-zinc-600 mt-1">Loading GRID static data...</div>
+                  )}
+                </div>
+
                 {gridData && gridData.length > 0 ? gridData.map((item, idx) => (
                   <div key={idx} className="flex justify-between items-center bg-black/40 p-3 rounded border border-zinc-800/50">
                     <div>
