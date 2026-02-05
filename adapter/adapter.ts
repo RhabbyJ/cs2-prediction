@@ -140,7 +140,7 @@ function startMockReplay() {
           ct_score: ctScore,
           bomb_planted: bombPlanted,
           phase: round > 30 ? 'ended' : 'live',
-          last_action: randomEvent
+          last_action: randomEvent || 'unknown'
         }
       }
     };
