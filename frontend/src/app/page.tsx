@@ -28,32 +28,66 @@ export default function CS2Dashboard() {
   const [matches, setMatches] = useState<any[]>([]);
   const [selectedMarket, setSelectedMarket] = useState(markets[0]);
   const [gridData, setGridData] = useState<any[]>([]);
+  const [connectionStatus, setConnectionStatus] = useState("CONNECTING");
 
   useEffect(() => {
-    const ws = new WebSocket(process.env.NEXT_PUBLIC_ENGINE_URL || "ws://localhost:8080/ws");
-    
-    ws.onmessage = (event) => {
-      const data = JSON.parse(event.data);
-      if (data.type === "game_event") {
-        setGameState({
-          round: data.payload.game_state.round,
-          t_score: data.payload.game_state.terrorist_score,
-          ct_score: data.payload.game_state.ct_score,
-          bomb: data.payload.game_state.bomb_planted,
-          last_action: data.payload.last_action
-        });
-        if (data.payload.markets) {
-          setMarkets(data.payload.markets);
-        }
-        if (data.payload.discovery) {
-          setGridData(data.payload.discovery);
-        }
-      } else if (data.type === "match_occurred") {
-        setMatches(prev => [data.payload, ...prev].slice(0, 10));
+    let ws: WebSocket | null = null;
+    let reconnectTimeout: any;
+
+    const connect = () => {
+      try {
+        const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+        const engineUrl = process.env.NEXT_PUBLIC_ENGINE_URL || "ws://localhost:8080/ws";
+        
+        // Ensure we use WSS if the page is HTTPS
+        const secureUrl = engineUrl.startsWith("ws:") && protocol === "wss:" 
+          ? engineUrl.replace("ws:", "wss:") 
+          : engineUrl;
+
+        ws = new WebSocket(secureUrl);
+        
+        ws.onopen = () => setConnectionStatus("OPTIMAL");
+        ws.onerror = () => setConnectionStatus("FAILED");
+        
+        ws.onmessage = (event) => {
+          const data = JSON.parse(event.data);
+          if (data.type === "game_event") {
+            if (data.payload.game_state) {
+              setGameState({
+                round: data.payload.game_state.round,
+                t_score: data.payload.game_state.terrorist_score,
+                ct_score: data.payload.game_state.ct_score,
+                bomb: data.payload.game_state.bomb_planted,
+                last_action: data.payload.last_action
+              });
+            }
+            if (data.payload.markets) {
+              setMarkets(data.payload.markets);
+            }
+            if (data.payload.discovery) {
+              setGridData(data.payload.discovery);
+            }
+          } else if (data.type === "match_occurred") {
+            setMatches(prev => [data.payload, ...prev].slice(0, 10));
+          }
+        };
+
+        ws.onclose = () => {
+          setConnectionStatus("DISCONNECTED");
+          reconnectTimeout = setTimeout(connect, 5000);
+        };
+      } catch (err) {
+        console.error("WS Connection Error:", err);
+        setConnectionStatus("INSECURE");
       }
     };
 
-    return () => ws.close();
+    connect();
+
+    return () => {
+      ws?.close();
+      clearTimeout(reconnectTimeout);
+    };
   }, []);
 
   return (
@@ -72,8 +106,13 @@ export default function CS2Dashboard() {
             </div>
           </div>
           <div className="flex items-center gap-2 bg-[#0a0a0a] px-3 py-1.5 rounded-full border border-zinc-800">
-            <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
-            <span className="text-[10px] font-bold text-zinc-400">CONNECTIVITY: OPTIMAL</span>
+            <div className={`w-2 h-2 rounded-full animate-pulse ${
+              connectionStatus === "OPTIMAL" ? "bg-green-500" : 
+              connectionStatus === "FAILED" || connectionStatus === "INSECURE" ? "bg-red-500" : "bg-zinc-600"
+            }`} />
+            <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-tighter">
+              CONNECTIVITY: {connectionStatus}
+            </span>
           </div>
         </header>
 
