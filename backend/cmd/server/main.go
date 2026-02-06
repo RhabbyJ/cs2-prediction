@@ -106,6 +106,7 @@ type AdapterCircuitBreakerPayload struct {
 var (
 	hub                     *Hub
 	marketManager           *engine.MarketManager
+	marketRegistry          *engine.MarketRegistry
 	buffer                  *engine.FairnessBuffer
 	auditLog                *audit.VeritasChain
 	lastSeriesStateByMarket = map[string]GameState{}
@@ -115,6 +116,7 @@ var (
 func main() {
 	hub = NewHub()
 	marketManager = engine.NewMarketManager()
+	marketRegistry = engine.NewMarketRegistry()
 	buffer = engine.NewFairnessBuffer(3 * time.Second)
 	auditLog = audit.NewVeritasChain()
 
@@ -122,6 +124,7 @@ func main() {
 	go processBuffer()
 
 	http.HandleFunc("/ws", handleWebSocket)
+	http.HandleFunc("/markets", handleMarkets)
 
 	fmt.Println("Information Finance Engine Live on :8080")
 	if err := http.ListenAndServe(":8080", nil); err != nil {
@@ -183,6 +186,15 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 				continue
 			}
 			marketManager.GetOrderBook(payload.MarketID)
+			marketRegistry.UpsertMarket(engine.MarketMetadata{
+				MarketID:   payload.MarketID,
+				SeriesID:   payload.SeriesID,
+				Title:      payload.Title,
+				Tournament: payload.Tournament,
+				Teams:      payload.Teams,
+				StartTime:  payload.StartTime,
+				Status:     "active",
+			})
 			hub.broadcast <- message
 		} else if msg["type"] == "series_state" {
 			payloadBytes, _ := json.Marshal(msg["payload"])
@@ -250,13 +262,30 @@ func isScoreAnomalous(marketID string, state GameState) bool {
 func suspendMarket(marketID string, reason string) {
 	ob := marketManager.GetOrderBook(marketID)
 	ob.SuspendTrading()
+	marketRegistry.UpdateMarketStatus(marketID, "suspended")
 	log.Printf("Market suspended: %s (reason=%s)", marketID, reason)
 }
 
 func resumeMarket(marketID string, reason string) {
 	ob := marketManager.GetOrderBook(marketID)
 	ob.ResumeTrading()
+	marketRegistry.UpdateMarketStatus(marketID, "active")
 	log.Printf("Market resumed: %s (reason=%s)", marketID, reason)
+}
+
+func handleMarkets(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(map[string]interface{}{
+		"markets": marketRegistry.ListMarkets(),
+	}); err != nil {
+		http.Error(w, "failed to encode response", http.StatusInternalServerError)
+		return
+	}
 }
 
 func processBuffer() {
