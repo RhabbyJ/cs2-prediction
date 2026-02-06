@@ -129,7 +129,7 @@ class OpenAccessProvider implements SeriesDataProvider {
   private readonly endpoint = 'https://api-op.grid.gg/central-data/graphql';
 
   async discoverSeries(): Promise<SeriesSummary[]> {
-    const query = `
+    const richQuery = `
       query GetUpcomingSeries {
         allSeries(first: 8, orderBy: StartTimeScheduled) {
           edges {
@@ -145,16 +145,41 @@ class OpenAccessProvider implements SeriesDataProvider {
       }
     `;
 
-    const response = await axios.post(
-      this.endpoint,
-      { query },
-      {
-        headers: {
-          'x-grid-api-key': GRID_API_KEY,
-          'Content-Type': 'application/json',
-        },
+    const minimalQuery = `
+      query GetUpcomingSeriesMinimal {
+        allSeries(first: 8, orderBy: StartTimeScheduled) {
+          edges {
+            node {
+              id
+              startTimeScheduled
+            }
+          }
+        }
       }
-    );
+    `;
+
+    const makeRequest = async (query: string) =>
+      axios.post(
+        this.endpoint,
+        { query },
+        {
+          headers: {
+            'x-grid-api-key': GRID_API_KEY,
+            'x-api-key': GRID_API_KEY,
+            'Content-Type': 'application/json',
+          },
+        }
+      );
+
+    let response = await makeRequest(richQuery);
+    if (response.data?.errors?.length) {
+      console.error('[ADAPTER] Rich discovery query returned GraphQL errors:', JSON.stringify(response.data.errors));
+      response = await makeRequest(minimalQuery);
+      if (response.data?.errors?.length) {
+        console.error('[ADAPTER] Minimal discovery query returned GraphQL errors:', JSON.stringify(response.data.errors));
+        throw new Error('OpenAccess discovery failed with GraphQL errors');
+      }
+    }
 
     const edges = (response.data?.data?.allSeries?.edges as Array<{ node: Record<string, unknown> }> | undefined) || [];
     return edges.map((edge) => {
