@@ -6,6 +6,17 @@ type GridProxyBody = {
   variables?: Record<string, unknown>;
 };
 
+function normalizeOpenAccessQuery(query: string) {
+  // Open Access schema does not expose Organization.nameShortened.
+  return query.replace(/\bnameShortened\b/g, (match, offset, input) => {
+    const lookback = input.slice(Math.max(0, offset - 80), offset);
+    if (lookback.includes("organization")) {
+      return "";
+    }
+    return match;
+  });
+}
+
 export async function POST(request: Request) {
   const body = (await request.json()) as GridProxyBody;
 
@@ -16,7 +27,11 @@ export async function POST(request: Request) {
     );
   }
 
-  const result = await gridFetch({ query: body.query, variables: body.variables });
+  const normalizedQuery = normalizeOpenAccessQuery(body.query);
+  const result = await gridFetch({
+    query: normalizedQuery,
+    variables: body.variables,
+  });
 
   if (!result.ok) {
     return NextResponse.json(
