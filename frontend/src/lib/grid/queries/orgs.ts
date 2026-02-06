@@ -1,6 +1,6 @@
 export const getEsportsOrganizationQuery = `
   query GetEsportsOrganization($id: ID!) {
-    esportsOrganization(id: $id) {
+    organization(id: $id) {
       id
       name
       nameShortened
