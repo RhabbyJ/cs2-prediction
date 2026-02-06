@@ -4,6 +4,6 @@ export { getAllSeriesNext24hQuery } from "./seriesList";
 export { getSeriesFormatsQuery } from "./seriesFormats";
 export { getTeamQuery } from "./teams";
 export { getPlayerQuery } from "./players";
-export { getEsportsOrganizationQuery } from "./orgs";
+export { getOrganizationQuery } from "./orgs";
 export { getSeriesStateQuery } from "./seriesState";
 export { getSeriesStatsQuery } from "./stats";

@@ -9,7 +9,7 @@ import {
   getSeriesFormatsQuery,
   getTeamQuery,
   getPlayerQuery,
-  getEsportsOrganizationQuery,
+  getOrganizationQuery,
   getSeriesStateQuery,
   getSeriesStatsQuery,
 } from "@/lib/grid/queries";
@@ -120,7 +120,7 @@ export default function CS2Dashboard() {
     seriesFormats: getSeriesFormatsQuery,
     teams: getTeamQuery,
     players: getPlayerQuery,
-    orgs: getEsportsOrganizationQuery,
+    orgs: getOrganizationQuery,
     seriesState: getSeriesStateQuery,
     stats: getSeriesStatsQuery,
   };
