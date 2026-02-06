@@ -3,7 +3,6 @@ export const getOrganizationQuery = `
     organization(id: $id) {
       id
       name
-      nameShortened
     }
   }
 `;
