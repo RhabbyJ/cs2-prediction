@@ -15,6 +15,16 @@ import {
 } from "@/lib/grid/queries";
 import type { Tournament } from "@/lib/grid/types";
 
+type EngineMarket = {
+  market_id: string;
+  series_id: string;
+  title: string;
+  tournament: string;
+  teams: string[];
+  start_time?: string;
+  status: "active" | "suspended" | "settled";
+};
+
 export default function CS2Dashboard() {
   const [gameState, setGameState] = useState({
     round: 14,
@@ -33,6 +43,8 @@ export default function CS2Dashboard() {
   const [explorerResult, setExplorerResult] = useState<string>("");
   const [explorerError, setExplorerError] = useState<string | null>(null);
   const [explorerLoading, setExplorerLoading] = useState(false);
+  const [engineMarkets, setEngineMarkets] = useState<EngineMarket[]>([]);
+  const [engineMarketsError, setEngineMarketsError] = useState<string | null>(null);
 
   useEffect(() => {
     let ws: WebSocket | null = null;
@@ -88,6 +100,41 @@ export default function CS2Dashboard() {
       clearTimeout(reconnectTimeout);
     };
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadEngineMarkets = async () => {
+      try {
+        const res = await fetch("/api/engine/markets", { cache: "no-store" });
+        const data = await res.json();
+        if (!res.ok) {
+          throw new Error(data?.error || "Engine markets request failed");
+        }
+        if (!cancelled) {
+          setEngineMarkets((data?.markets || []) as EngineMarket[]);
+          setEngineMarketsError(null);
+        }
+      } catch (err: unknown) {
+        if (!cancelled) {
+          setEngineMarketsError(err instanceof Error ? err.message : "Failed to load engine markets");
+        }
+      }
+    };
+
+    void loadEngineMarkets();
+    const interval = setInterval(loadEngineMarkets, 15000);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, []);
+
+  const activeMarket = engineMarkets.find((m) => m.status === "active") || engineMarkets[0];
+  const activeMarketTeams =
+    activeMarket?.teams?.length && activeMarket.teams.length >= 2
+      ? `${activeMarket.teams[0]} vs. ${activeMarket.teams[1]}`
+      : activeMarket?.title || "Waiting for market feed...";
 
   useEffect(() => {
     let cancelled = false;
@@ -194,7 +241,10 @@ export default function CS2Dashboard() {
             <div className="bg-[#141414] border border-[#262626] rounded-xl p-8 flex justify-between items-center">
               <div>
                 <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest mb-1">Live Series</p>
-                <h2 className="text-3xl font-black">NAVI vs. LIQUID</h2>
+                <h2 className="text-3xl font-black">{activeMarketTeams}</h2>
+                <p className="mt-1 text-xs uppercase tracking-widest text-zinc-500">
+                  {activeMarket ? `${activeMarket.tournament} - ${activeMarket.status}` : "No active market"}
+                </p>
                 <div className="mt-4 flex items-center gap-3 text-sm text-zinc-400">
                   <span className={`status-badge ${gameState.bomb ? 'bg-orange-500/20 text-orange-500 border border-orange-500/30' : 'bg-blue-500/10 text-blue-500 border border-blue-500/20'}`}>
                     {gameState.bomb ? 'BOMB PLANTED' : 'IN PLAY'}
@@ -248,7 +298,26 @@ export default function CS2Dashboard() {
                   )}
                 </div>
 
-                {gridData && gridData.length > 0 ? gridData.map((item, idx) => (
+                {engineMarketsError ? (
+                  <div className="text-xs text-red-400">{engineMarketsError}</div>
+                ) : engineMarkets.length > 0 ? engineMarkets.map((item) => (
+                  <div key={item.market_id} className="flex justify-between items-center bg-black/40 p-3 rounded border border-zinc-800/50">
+                    <div>
+                      <div className="text-[10px] text-zinc-500 font-bold uppercase">{item.tournament}</div>
+                      <div className="text-sm font-bold flex items-center gap-2">
+                        <span>{item.teams?.[0] || "TBD"}</span>
+                        <span className="text-zinc-600 text-[10px]">vs</span>
+                        <span>{item.teams?.[1] || "TBD"}</span>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <div className="text-[9px] font-mono text-zinc-600">MARKET: {item.market_id}</div>
+                      <div className="text-[10px] text-blue-500 font-bold uppercase tracking-tighter mt-1">
+                        STATUS: {item.status}
+                      </div>
+                    </div>
+                  </div>
+                )) : gridData && gridData.length > 0 ? gridData.map((item, idx) => (
                   <div key={idx} className="flex justify-between items-center bg-black/40 p-3 rounded border border-zinc-800/50">
                     <div>
                       <div className="text-[10px] text-zinc-500 font-bold uppercase">{item.tournament}</div>

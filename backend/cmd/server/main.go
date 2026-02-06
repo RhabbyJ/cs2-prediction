@@ -6,6 +6,7 @@ import (
 	"log"
 	"math"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -125,6 +126,7 @@ func main() {
 
 	http.HandleFunc("/ws", handleWebSocket)
 	http.HandleFunc("/markets", handleMarkets)
+	http.HandleFunc("/markets/", handleMarketByID)
 
 	fmt.Println("Information Finance Engine Live on :8080")
 	if err := http.ListenAndServe(":8080", nil); err != nil {
@@ -209,6 +211,9 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 			if isScoreAnomalous(marketID, payload.GameState) {
 				suspendMarket(marketID, "score_anomaly")
 			}
+			if payload.GameState.Phase == "ended" {
+				marketRegistry.UpdateMarketStatus(marketID, "settled")
+			}
 
 			gameEventMsg, _ := json.Marshal(map[string]interface{}{
 				"type": "game_event",
@@ -282,6 +287,33 @@ func handleMarkets(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(map[string]interface{}{
 		"markets": marketRegistry.ListMarkets(),
+	}); err != nil {
+		http.Error(w, "failed to encode response", http.StatusInternalServerError)
+		return
+	}
+}
+
+func handleMarketByID(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	marketID := strings.TrimPrefix(r.URL.Path, "/markets/")
+	if marketID == "" || strings.Contains(marketID, "/") {
+		http.Error(w, "invalid market id", http.StatusBadRequest)
+		return
+	}
+
+	meta, ok := marketRegistry.GetMarket(marketID)
+	if !ok {
+		http.Error(w, "market not found", http.StatusNotFound)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(map[string]interface{}{
+		"market": meta,
 	}); err != nil {
 		http.Error(w, "failed to encode response", http.StatusInternalServerError)
 		return
