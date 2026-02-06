@@ -1,10 +1,8 @@
-export const getSeriesStatsQuery = `
+export const getSeriesStatsCDFQuery = `
   query GetSeriesStats($id: ID!) {
-    seriesStats(id: $id) {
+    series(id: $id) {
       id
-      series {
-        id
-      }
+      startTimeScheduled
     }
   }
 `;

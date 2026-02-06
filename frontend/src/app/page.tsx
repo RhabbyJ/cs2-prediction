@@ -8,10 +8,10 @@ import {
   getAllSeriesNext24hQuery,
   getSeriesFormatsQuery,
   getTeamQuery,
-  getPlayerQuery,
+  getPersonQuery,
   getOrganizationQuery,
-  getSeriesStateQuery,
-  getSeriesStatsQuery,
+  getSeriesStateCDFQuery,
+  getSeriesStatsCDFQuery,
 } from "@/lib/grid/queries";
 import type { Tournament } from "@/lib/grid/types";
 
@@ -119,10 +119,10 @@ export default function CS2Dashboard() {
     seriesNext24h: getAllSeriesNext24hQuery,
     seriesFormats: getSeriesFormatsQuery,
     teams: getTeamQuery,
-    players: getPlayerQuery,
+    players: getPersonQuery,
     orgs: getOrganizationQuery,
-    seriesState: getSeriesStateQuery,
-    stats: getSeriesStatsQuery,
+    seriesState: getSeriesStateCDFQuery,
+    stats: getSeriesStatsCDFQuery,
   };
 
   const runExplorerQuery = async () => {

@@ -1,8 +1,9 @@
-export const getPlayerQuery = `
-  query GetPlayer($id: ID!) {
-    player(id: $id) {
+export const getPersonQuery = `
+  query GetPerson($id: ID!) {
+    person(id: $id) {
       id
-      name
+      firstName
+      lastName
       nickName
     }
   }

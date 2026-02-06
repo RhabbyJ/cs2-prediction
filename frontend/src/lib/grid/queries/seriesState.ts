@@ -1,13 +1,10 @@
-export const getSeriesStateQuery = `
+export const getSeriesStateCDFQuery = `
   query GetSeriesState($id: ID!) {
-    seriesState(id: $id) {
+    series(id: $id) {
       id
-      series {
-        id
-      }
-      title {
-        id
-        nameShortened
+      startTimeScheduled
+      format {
+        name
       }
     }
   }
