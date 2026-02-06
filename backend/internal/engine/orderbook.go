@@ -53,6 +53,9 @@ func (h AskHeap) Less(i, j int) bool {
 // OrderBook manages the bids and asks for YES and NO outcomes
 type OrderBook struct {
 	mu sync.Mutex
+	// TradingSuspended prevents new orders from entering the matching engine
+	// when market data health is degraded.
+	TradingSuspended bool
 
 	// YES Outcome book
 	YesBids BidHeap
@@ -109,6 +112,10 @@ func (ob *OrderBook) ProcessOrder(incoming *Order) []Match {
 	ob.mu.Lock()
 	defer ob.mu.Unlock()
 
+	if ob.TradingSuspended {
+		return nil
+	}
+
 	var matches []Match
 
 	if incoming.Outcome == Yes {
@@ -131,6 +138,24 @@ func (ob *OrderBook) ProcessOrder(incoming *Order) []Match {
 	}
 
 	return matches
+}
+
+func (ob *OrderBook) SuspendTrading() {
+	ob.mu.Lock()
+	defer ob.mu.Unlock()
+	ob.TradingSuspended = true
+}
+
+func (ob *OrderBook) ResumeTrading() {
+	ob.mu.Lock()
+	defer ob.mu.Unlock()
+	ob.TradingSuspended = false
+}
+
+func (ob *OrderBook) IsTradingSuspended() bool {
+	ob.mu.Lock()
+	defer ob.mu.Unlock()
+	return ob.TradingSuspended
 }
 
 func (ob *OrderBook) match(incoming *Order, traditional heap.Interface, complementary heap.Interface, isBuy bool) []Match {
