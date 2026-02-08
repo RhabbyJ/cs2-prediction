@@ -2,27 +2,31 @@
 
 ## Project
 - Name: CS2_Prediction
-- Goal: Build a production-shaped esports prediction market stack with provider abstraction and auditable market lifecycle.
+- Goal: Production-shaped esports prediction market with verifiable market lifecycle, trading, and settlement.
 
-## Stable Decisions
-- Use Provider Pattern for data ingest.
-- Use GRID Open Access for discovery/metadata.
-- Use deterministic mock in-play provider until commercial live feed access.
-- Keep matching/pricing engine data-source agnostic.
-- Store market metadata in backend registry and expose via API.
+## What Is Implemented
+- Provider pattern live:
+  - `adapter`: GRID Open Access discovery + deterministic mock in-play feed.
+- Market lifecycle in backend:
+  - `active -> suspended/active -> settled`.
+  - `settled` is terminal (no auto-downgrade).
+- Market registry API:
+  - `GET /markets`
+  - `GET /markets/{market_id}`
+- Registry stores:
+  - metadata, status, game_state, winner, settled_at, final_score.
+- Dummy ledger in backend:
+  - balance reserve/spent/realized_pnl
+  - buy/sell collateral rules
+  - positions and settlement payout logic.
+- User APIs:
+  - `GET /users/{userId}/balance`
+  - `GET /users/{userId}/positions`
+- Frontend updates:
+  - engine market feed + pinned market via `NEXT_PUBLIC_TEST_MARKET_ID`
+  - order ticket (BUY/SELL YES/NO), account panel, positions preview, activity feed.
 
-## Architecture Notes
-- Backend: Go websocket engine + orderbook + market registry.
-- Adapter: TypeScript provider orchestrator emitting market and series events.
-- Frontend: Next.js dashboard with Grid explorer + engine market feed.
-
-## Deployed Reality (latest verified)
-- `GET /markets` works and returns populated market metadata.
-- Frontend shows engine markets and market status in UI.
-- Current issue observed: many/all markets show `SUSPENDED` (circuit breaker likely too aggressive).
-
-## Important Endpoints
-- Engine WS: `/ws`
-- Engine list: `/markets`
-- Engine detail: `/markets/{market_id}`
-- Frontend API proxy: `/api/engine/markets`, `/api/engine/markets/[marketId]`
+## Current Known Behavior
+- If orders are unmatched, funds are reserved then refunded on settlement.
+- Positions only appear after matched trades.
+- Vercel requires TLS (`https`/`wss`) to reach VPS engine reliably.

@@ -1,19 +1,22 @@
 # Codex Tasks
 
 ## Now
-- [x] Tune circuit breaker thresholds and resume logic to avoid blanket suspension.
-- [ ] Verify `settled` status transition when `series_state.game_state.phase = ended`.
-- [ ] Validate `/markets/{market_id}` from VPS and frontend proxy.
+- [x] Tune circuit breaker and add auto-recovery.
+- [x] Enforce terminal `settled` behavior.
+- [x] Add registry winner/final_score fields.
+- [x] Add dummy ledger + user balance/positions APIs.
+- [ ] Configure TLS engine endpoint for Vercel (`https` + `wss`).
+- [ ] Verify Vercel order submission works end-to-end after TLS.
 
 ## Next
-- [ ] Add market sorting/filtering (active first, then start time).
-- [ ] Add frontend detail panel for selected market using `/api/engine/markets/[marketId]`.
-- [ ] Add explicit admin/manual suspend and resume event path.
+- [ ] Add synthetic counterparty/liquidity bot so orders match deterministically.
+- [ ] Add persistent order/activity history API (survives refresh).
+- [ ] Add frontend payout panel with per-market settlement breakdown.
 
 ## Later
+- [ ] Persist markets/orders/ledger in Supabase (or Postgres).
+- [ ] Add outcome resolution + payout audit trail tables.
 - [ ] Replace mock in-play provider with commercial live feed provider.
-- [ ] Add settlement pipeline and outcomes finalization.
-- [ ] Add audit snapshot commitments for investor/demo transparency.
 
 ## Resume Prompt
-Continue from codex/tasks.md and first fix over-aggressive circuit breaker suspension while preserving anomaly protection.
+Continue by implementing a minimal market-maker bot (narrow spread around midpoint) so demo orders match and payout flow is visible without manual counter-orders.

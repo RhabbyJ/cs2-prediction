@@ -1,51 +1,40 @@
 # Repository Guidelines
 
 ## Project Structure & Module Organization
-- `backend/`: Go matching engine and WebSocket server (`cmd/server/main.go`, `internal/engine/*`, `internal/audit/*`).
-- `adapter/`: TypeScript market-data adapter/provider layer (GRID Open Access discovery + deterministic mock in-play stream).
-- `frontend/`: Next.js app (`src/app/*`) with API routes for GRID and engine proxies.
-- `scripts/`: utility scripts and Lua helpers.
-- `docker-compose.yml`: local orchestration for `engine`, `adapter`, and `redis`.
-- `codex/`: project memory/state/tasks for session continuity.
+- `backend/`: Go engine, websocket server, market registry, dummy ledger.
+- `adapter/`: TypeScript provider layer (GRID discovery + deterministic mock replay).
+- `frontend/`: Next.js dashboard + API proxies (`/api/grid/*`, `/api/engine/*`).
+- `codex/`: source-of-truth handoff docs (`memory.md`, `state.md`, `tasks.md`).
 
 ## Build, Test, and Development Commands
-- Root services:
-  - `docker compose up -d --build`: build and run engine/adapter/redis.
-  - `docker compose logs -f engine` / `docker compose logs -f adapter`: inspect runtime behavior.
-- Backend (`backend/`):
-  - `go mod tidy`: sync module metadata.
-  - `go build ./...`: compile all Go packages.
-- Adapter (`adapter/`):
-  - `npx tsc --noEmit`: type-check only.
-  - `npx tsc`: build to `dist/`.
-- Frontend (`frontend/`):
-  - `npm install`
-  - `npm run dev`: local Next.js server.
-  - `npm run build`: production build.
-  - `npm run lint`: ESLint checks.
+- Root runtime: `docker compose up -d --build`
+- Logs: `docker compose logs -f engine`, `docker compose logs -f adapter`
+- Backend: `cd backend && go mod tidy && go build ./...`
+- Adapter: `cd adapter && npx tsc --noEmit`
+- Frontend: `cd frontend && npm run dev` (or `npm run build`)
 
 ## Coding Style & Naming Conventions
-- Go: use `gofmt` before commit; exported names in `PascalCase`, internal helpers in `camelCase`.
-- TypeScript/React: follow ESLint defaults; prefer explicit types for API payloads.
-- Keep file names consistent with existing patterns (`seriesState.ts`, `market_registry.go`).
-- Use clear event type strings (`market_created`, `series_state`, `circuit_breaker`).
+- Go: `gofmt` required; keep lifecycle logic explicit and deterministic.
+- TypeScript: explicit payload types for events and API responses.
+- Event names are contract-like: `market_created`, `series_state`, `market_settled`, `order_rejected`.
 
 ## Testing Guidelines
-- No full test suite is enforced yet; minimum gate is successful build/type-check.
-- Validate core flows manually:
+- Manual API checks:
   - `curl http://localhost:8080/markets`
-  - WebSocket stream at `/ws`
-  - Frontend rendering of engine market feed.
-- Add focused tests when introducing new engine logic or provider behavior.
+  - `curl http://localhost:8080/markets/<market_id>`
+  - `curl http://localhost:8080/users/demo_user_1/balance`
+- Verify lifecycle: `active -> settled` with winner/final score fixed.
+- Verify ledger: reserve on submit, spend on match, payout/refund on settlement.
 
 ## Commit & Pull Request Guidelines
-- Commit messages: short, imperative, scoped (e.g., `backend: tune circuit breaker auto-recovery`).
-- Keep commits atomic (backend, adapter, frontend changes grouped logically).
-- PRs should include:
-  - What changed and why
-  - Verification steps/commands run
-  - API/UI evidence (sample `curl` output or screenshots)
+- Use short scoped commits, e.g. `backend: preserve settled state on upsert`.
+- Keep backend/adapter/frontend changes grouped by feature slice.
+- PR must include: behavior change summary, validation commands, and API/UI evidence.
 
 ## Security & Configuration Tips
-- Never commit real API keys. Use `.env` (`GRID_API_KEY`, `ENGINE_URL`, `NEXT_PUBLIC_ENGINE_URL`).
-- Open Access key works with `https://api-op.grid.gg/central-data/graphql`; do not assume access to commercial endpoints.
+- Never commit real secrets in `.env*`.
+- For Vercel, set:
+  - `ENGINE_HTTP_URL=https://<engine-domain>`
+  - `NEXT_PUBLIC_ENGINE_HTTP_URL=https://<engine-domain>`
+  - `NEXT_PUBLIC_ENGINE_URL=wss://<engine-domain>/ws`
+- Raw IP + `ws://` is acceptable for local-only testing, not stable production.

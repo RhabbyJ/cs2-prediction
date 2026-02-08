@@ -1,20 +1,18 @@
 # Codex State
 
-## Current Assumptions
-- GRID API key is valid for `https://api-op.grid.gg/central-data/graphql`.
-- GRID API key is not authorized for `https://api.grid.gg/central-data/graphql`.
-- Adapter discovery + market creation is functional.
-- Backend registry ingestion is functional.
-
-## Current Risks
-- Circuit breaker logic was tuned in backend to reduce false suspensions, but VPS verification is still pending.
-- Frontend lint has pre-existing `no-explicit-any` errors in `frontend/src/app/page.tsx` and `frontend/src/lib/grid/client.ts`.
-
 ## Environment
-- VPS runs docker compose services: `engine`, `adapter`, `redis`.
-- Frontend deployed separately (Vercel, root set to `frontend`).
+- VPS services: `engine`, `adapter`, `redis` via `docker compose`.
+- Frontend deployed on Vercel (root: `frontend`).
+- Local testing works with direct VPS IP (`http/ws`) from `localhost` frontend.
 
-## Known Good Checks
-- `curl -s http://localhost:8080/markets`
-- `docker compose logs --tail=150 adapter`
-- `docker compose logs --tail=150 engine`
+## Access Facts
+- GRID key works on `https://api-op.grid.gg/central-data/graphql`.
+- GRID key is unauthorized on `https://api.grid.gg/central-data/graphql`.
+
+## Blocking/Operational Notes
+- Vercel frontend currently cannot reliably use raw `ws://<ip>:8080/ws` from HTTPS origin.
+- Need public TLS backend domain (e.g. `https://engine.<domain>`, `wss://engine.<domain>/ws`).
+
+## Current Risk
+- No guaranteed trade matching yet; without opposing liquidity, payouts stay zero.
+- Activity feed is client-memory only (lost on refresh).
