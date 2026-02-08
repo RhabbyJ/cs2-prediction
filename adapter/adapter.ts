@@ -108,20 +108,16 @@ const SCENARIOS: Record<string, ScenarioFrame[]> = {
     { round: 22, terrorist_score: 11, ct_score: 10, bomb_planted: true, last_action: 'entry_and_trade' },
     { round: 23, terrorist_score: 11, ct_score: 11, bomb_planted: false, last_action: 'late_flank_denied' },
     { round: 24, terrorist_score: 12, ct_score: 11, bomb_planted: true, last_action: 'post_plant_crossfire' },
-    { round: 25, terrorist_score: 12, ct_score: 12, bomb_planted: false, last_action: '14_14_setup' },
-    { round: 26, terrorist_score: 13, ct_score: 12, bomb_planted: true, last_action: 'match_point_pressure' },
-    { round: 27, terrorist_score: 13, ct_score: 13, bomb_planted: false, last_action: 'composure_round' },
-    { round: 28, terrorist_score: 14, ct_score: 13, bomb_planted: true, last_action: 'late_round_clutch' },
-    { round: 29, terrorist_score: 14, ct_score: 14, bomb_planted: false, last_action: '14_14_tie' },
-    { round: 30, terrorist_score: 16, ct_score: 14, bomb_planted: true, last_action: 'map_closed', phase: 'ended' },
+    { round: 25, terrorist_score: 12, ct_score: 12, bomb_planted: false, last_action: 'final_round_setup' },
+    { round: 26, terrorist_score: 13, ct_score: 12, bomb_planted: true, last_action: 'map_closed', phase: 'ended' },
   ],
   ct_comeback: [
     { round: 1, terrorist_score: 3, ct_score: 0, bomb_planted: true, last_action: 't_start_hot' },
     { round: 6, terrorist_score: 5, ct_score: 4, bomb_planted: false, last_action: 'ct_adjustments' },
     { round: 11, terrorist_score: 6, ct_score: 8, bomb_planted: false, last_action: 'ct_streak' },
     { round: 16, terrorist_score: 8, ct_score: 11, bomb_planted: true, last_action: 't_recovery_attempt' },
-    { round: 21, terrorist_score: 9, ct_score: 14, bomb_planted: false, last_action: 'ct_lockdown' },
-    { round: 24, terrorist_score: 10, ct_score: 16, bomb_planted: false, last_action: 'map_closed', phase: 'ended' },
+    { round: 21, terrorist_score: 9, ct_score: 12, bomb_planted: false, last_action: 'ct_lockdown' },
+    { round: 22, terrorist_score: 10, ct_score: 13, bomb_planted: false, last_action: 'map_closed', phase: 'ended' },
   ],
 };
 
@@ -247,6 +243,9 @@ class MockInPlayProvider implements InPlayProvider {
       };
 
       this.sendSeriesState(event);
+      if (event.payload.game_state.phase === 'ended') {
+        completedSeries.add(series.id);
+      }
 
       // Soft anomaly protection demo path for deterministic testing.
       if (Math.abs(frame.terrorist_score - frame.ct_score) >= 12 && frame.round < 10) {
@@ -288,6 +287,7 @@ let orchestratorStarted = false;
 const openAccessProvider = new OpenAccessProvider();
 const mockInPlayProvider = new MockInPlayProvider(sendSeriesState, sendCircuitBreaker);
 const knownSeries = new Set<string>();
+const completedSeries = new Set<string>();
 const activeMarkets = new Set<string>();
 let consecutiveProviderFailures = 0;
 let feedsSuspended = false;
@@ -425,6 +425,9 @@ async function runDiscoveryLoop(): Promise<void> {
         }
 
         if (hasSeriesStarted(series.startTimeScheduled)) {
+          if (completedSeries.has(series.id)) {
+            continue;
+          }
           mockInPlayProvider.start(series);
         }
       }
