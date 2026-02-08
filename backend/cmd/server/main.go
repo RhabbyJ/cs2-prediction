@@ -215,6 +215,17 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 
 			marketID := "series_" + payload.SeriesID + "_winner"
 			marketManager.GetOrderBook(marketID)
+			marketRegistry.UpdateMarketGameState(marketID, engine.MarketGameState{
+				Map:            payload.GameState.Map,
+				Round:          payload.GameState.Round,
+				TerroristScore: payload.GameState.TerroristScore,
+				CTScore:        payload.GameState.CTScore,
+				BombPlanted:    payload.GameState.BombPlanted,
+				Phase:          payload.GameState.Phase,
+				LastAction:     payload.GameState.LastAction,
+				Timestamp:      payload.Timestamp,
+			})
+
 			if isScoreAnomalous(marketID, payload.GameState) {
 				suspendMarket(marketID, "score_anomaly")
 			} else {

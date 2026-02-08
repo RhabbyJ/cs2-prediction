@@ -23,10 +23,22 @@ type EngineMarket = {
   teams: string[];
   start_time?: string;
   status: "active" | "suspended" | "settled";
+  game_state?: {
+    map?: string;
+    round?: number;
+    terrorist_score?: number;
+    ct_score?: number;
+    bomb_planted?: boolean;
+    phase?: string;
+    last_action?: string;
+    timestamp?: string;
+  };
 };
 
 export default function CS2Dashboard() {
   const pinnedMarketId = process.env.NEXT_PUBLIC_TEST_MARKET_ID?.trim();
+  const pinnedSeriesId =
+    pinnedMarketId?.match(/^series_(.+)_winner$/)?.[1];
   const [gameState, setGameState] = useState({
     round: 14,
     t_score: 8,
@@ -70,6 +82,9 @@ export default function CS2Dashboard() {
           const data = JSON.parse(event.data);
           if (data.type === "game_event") {
             if (data.payload.game_state) {
+              if (pinnedSeriesId && data.payload.series_id !== pinnedSeriesId) {
+                return;
+              }
               setGameState({
                 round: data.payload.game_state.round,
                 t_score: data.payload.game_state.terrorist_score,
@@ -139,6 +154,17 @@ export default function CS2Dashboard() {
     focusedMarket?.teams?.length && focusedMarket.teams.length >= 2
       ? `${focusedMarket.teams[0]} vs. ${focusedMarket.teams[1]}`
       : focusedMarket?.title || "Waiting for market feed...";
+
+  useEffect(() => {
+    if (!focusedMarket?.game_state) return;
+    setGameState({
+      round: focusedMarket.game_state.round ?? 0,
+      t_score: focusedMarket.game_state.terrorist_score ?? 0,
+      ct_score: focusedMarket.game_state.ct_score ?? 0,
+      bomb: focusedMarket.game_state.bomb_planted ?? false,
+      last_action: focusedMarket.game_state.last_action || "No recent action",
+    });
+  }, [focusedMarket]);
 
   useEffect(() => {
     let cancelled = false;

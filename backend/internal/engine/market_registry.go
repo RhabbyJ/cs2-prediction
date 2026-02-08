@@ -3,13 +3,25 @@ package engine
 import "sync"
 
 type MarketMetadata struct {
-	MarketID   string   `json:"market_id"`
-	SeriesID   string   `json:"series_id"`
-	Title      string   `json:"title"`
-	Tournament string   `json:"tournament"`
-	Teams      []string `json:"teams"`
-	StartTime  string   `json:"start_time,omitempty"`
-	Status     string   `json:"status"`
+	MarketID   string           `json:"market_id"`
+	SeriesID   string           `json:"series_id"`
+	Title      string           `json:"title"`
+	Tournament string           `json:"tournament"`
+	Teams      []string         `json:"teams"`
+	StartTime  string           `json:"start_time,omitempty"`
+	Status     string           `json:"status"`
+	GameState  *MarketGameState `json:"game_state,omitempty"`
+}
+
+type MarketGameState struct {
+	Map            string `json:"map"`
+	Round          int    `json:"round"`
+	TerroristScore int    `json:"terrorist_score"`
+	CTScore        int    `json:"ct_score"`
+	BombPlanted    bool   `json:"bomb_planted"`
+	Phase          string `json:"phase"`
+	LastAction     string `json:"last_action"`
+	Timestamp      string `json:"timestamp,omitempty"`
 }
 
 type MarketRegistry struct {
@@ -38,6 +50,19 @@ func (mr *MarketRegistry) UpdateMarketStatus(marketID string, status string) boo
 		return false
 	}
 	meta.Status = status
+	mr.markets[marketID] = meta
+	return true
+}
+
+func (mr *MarketRegistry) UpdateMarketGameState(marketID string, gameState MarketGameState) bool {
+	mr.mu.Lock()
+	defer mr.mu.Unlock()
+
+	meta, ok := mr.markets[marketID]
+	if !ok {
+		return false
+	}
+	meta.GameState = &gameState
 	mr.markets[marketID] = meta
 	return true
 }
