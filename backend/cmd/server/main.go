@@ -104,14 +104,21 @@ type AdapterCircuitBreakerPayload struct {
 	Action   string `json:"action"`
 }
 
+type MarketHealthState struct {
+	LastState         GameState
+	HasLastState      bool
+	SuspendedByReason string
+	HealthyStreak     int
+}
+
 var (
-	hub                     *Hub
-	marketManager           *engine.MarketManager
-	marketRegistry          *engine.MarketRegistry
-	buffer                  *engine.FairnessBuffer
-	auditLog                *audit.VeritasChain
-	lastSeriesStateByMarket = map[string]GameState{}
-	stateMu                 sync.Mutex
+	hub              *Hub
+	marketManager    *engine.MarketManager
+	marketRegistry   *engine.MarketRegistry
+	buffer           *engine.FairnessBuffer
+	auditLog         *audit.VeritasChain
+	marketHealthByID = map[string]*MarketHealthState{}
+	stateMu          sync.Mutex
 )
 
 func main() {
@@ -210,6 +217,8 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 			marketManager.GetOrderBook(marketID)
 			if isScoreAnomalous(marketID, payload.GameState) {
 				suspendMarket(marketID, "score_anomaly")
+			} else {
+				maybeResumeAfterHealthyUpdates(marketID)
 			}
 			if payload.GameState.Phase == "ended" {
 				marketRegistry.UpdateMarketStatus(marketID, "settled")
@@ -253,21 +262,63 @@ func isScoreAnomalous(marketID string, state GameState) bool {
 	stateMu.Lock()
 	defer stateMu.Unlock()
 
-	prev, ok := lastSeriesStateByMarket[marketID]
-	lastSeriesStateByMarket[marketID] = state
+	health, ok := marketHealthByID[marketID]
 	if !ok {
+		health = &MarketHealthState{}
+		marketHealthByID[marketID] = health
+	}
+
+	if !health.HasLastState {
+		health.LastState = state
+		health.HasLastState = true
 		return false
 	}
 
-	deltaT := math.Abs(float64(state.TerroristScore - prev.TerroristScore))
-	deltaCT := math.Abs(float64(state.CTScore - prev.CTScore))
-	return deltaT > 3 || deltaCT > 3
+	prev := health.LastState
+	roundDelta := state.Round - prev.Round
+	deltaT := int(math.Abs(float64(state.TerroristScore - prev.TerroristScore)))
+	deltaCT := int(math.Abs(float64(state.CTScore - prev.CTScore)))
+	totalScoreDelta := deltaT + deltaCT
+
+	health.LastState = state
+
+	// A round cannot go backwards in a valid stream.
+	if roundDelta < 0 {
+		health.HealthyStreak = 0
+		return true
+	}
+
+	// If round doesn't advance, score should not advance either.
+	if roundDelta == 0 && totalScoreDelta > 0 {
+		health.HealthyStreak = 0
+		return true
+	}
+
+	// Across N rounds, score can increase by at most N total points.
+	if roundDelta > 0 && totalScoreDelta > roundDelta {
+		health.HealthyStreak = 0
+		return true
+	}
+
+	health.HealthyStreak++
+	return false
 }
 
 func suspendMarket(marketID string, reason string) {
 	ob := marketManager.GetOrderBook(marketID)
 	ob.SuspendTrading()
 	marketRegistry.UpdateMarketStatus(marketID, "suspended")
+
+	stateMu.Lock()
+	health, ok := marketHealthByID[marketID]
+	if !ok {
+		health = &MarketHealthState{}
+		marketHealthByID[marketID] = health
+	}
+	health.SuspendedByReason = reason
+	health.HealthyStreak = 0
+	stateMu.Unlock()
+
 	log.Printf("Market suspended: %s (reason=%s)", marketID, reason)
 }
 
@@ -275,7 +326,31 @@ func resumeMarket(marketID string, reason string) {
 	ob := marketManager.GetOrderBook(marketID)
 	ob.ResumeTrading()
 	marketRegistry.UpdateMarketStatus(marketID, "active")
+
+	stateMu.Lock()
+	if health, ok := marketHealthByID[marketID]; ok {
+		health.SuspendedByReason = ""
+		health.HealthyStreak = 0
+	}
+	stateMu.Unlock()
+
 	log.Printf("Market resumed: %s (reason=%s)", marketID, reason)
+}
+
+func maybeResumeAfterHealthyUpdates(marketID string) {
+	stateMu.Lock()
+	health, ok := marketHealthByID[marketID]
+	if !ok {
+		stateMu.Unlock()
+		return
+	}
+
+	shouldResume := health.SuspendedByReason == "score_anomaly" && health.HealthyStreak >= 3
+	stateMu.Unlock()
+
+	if shouldResume {
+		resumeMarket(marketID, "auto_recovered_after_healthy_streak")
+	}
 }
 
 func handleMarkets(w http.ResponseWriter, r *http.Request) {

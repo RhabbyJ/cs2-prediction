@@ -7,7 +7,7 @@
 - Backend registry ingestion is functional.
 
 ## Current Risks
-- Circuit breaker can suspend too many markets and stay suspended.
+- Circuit breaker logic was tuned in backend to reduce false suspensions, but VPS verification is still pending.
 - Frontend lint has pre-existing `no-explicit-any` errors in `frontend/src/app/page.tsx` and `frontend/src/lib/grid/client.ts`.
 
 ## Environment

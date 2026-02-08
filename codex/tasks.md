@@ -1,7 +1,7 @@
 # Codex Tasks
 
 ## Now
-- [ ] Tune circuit breaker thresholds and resume logic to avoid blanket suspension.
+- [x] Tune circuit breaker thresholds and resume logic to avoid blanket suspension.
 - [ ] Verify `settled` status transition when `series_state.game_state.phase = ended`.
 - [ ] Validate `/markets/{market_id}` from VPS and frontend proxy.
 
