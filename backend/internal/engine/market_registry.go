@@ -41,6 +41,30 @@ func NewMarketRegistry() *MarketRegistry {
 func (mr *MarketRegistry) UpsertMarket(meta MarketMetadata) {
 	mr.mu.Lock()
 	defer mr.mu.Unlock()
+
+	existing, ok := mr.markets[meta.MarketID]
+	if !ok {
+		mr.markets[meta.MarketID] = meta
+		return
+	}
+
+	// Preserve lifecycle-critical fields when rediscovery sends market_created again.
+	if existing.Status != "" {
+		meta.Status = existing.Status
+	}
+	if existing.GameState != nil {
+		meta.GameState = existing.GameState
+	}
+	if existing.Winner != "" {
+		meta.Winner = existing.Winner
+	}
+	if existing.SettledAt != "" {
+		meta.SettledAt = existing.SettledAt
+	}
+	if existing.FinalScore != "" {
+		meta.FinalScore = existing.FinalScore
+	}
+
 	mr.markets[meta.MarketID] = meta
 }
 
