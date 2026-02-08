@@ -26,6 +26,7 @@ type EngineMarket = {
 };
 
 export default function CS2Dashboard() {
+  const pinnedMarketId = process.env.NEXT_PUBLIC_TEST_MARKET_ID?.trim();
   const [gameState, setGameState] = useState({
     round: 14,
     t_score: 8,
@@ -131,10 +132,13 @@ export default function CS2Dashboard() {
   }, []);
 
   const activeMarket = engineMarkets.find((m) => m.status === "active") || engineMarkets[0];
+  const focusedMarket =
+    (pinnedMarketId ? engineMarkets.find((m) => m.market_id === pinnedMarketId) : undefined) || activeMarket;
+  const visibleMarkets = focusedMarket ? [focusedMarket] : engineMarkets;
   const activeMarketTeams =
-    activeMarket?.teams?.length && activeMarket.teams.length >= 2
-      ? `${activeMarket.teams[0]} vs. ${activeMarket.teams[1]}`
-      : activeMarket?.title || "Waiting for market feed...";
+    focusedMarket?.teams?.length && focusedMarket.teams.length >= 2
+      ? `${focusedMarket.teams[0]} vs. ${focusedMarket.teams[1]}`
+      : focusedMarket?.title || "Waiting for market feed...";
 
   useEffect(() => {
     let cancelled = false;
@@ -243,8 +247,13 @@ export default function CS2Dashboard() {
                 <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest mb-1">Live Series</p>
                 <h2 className="text-3xl font-black">{activeMarketTeams}</h2>
                 <p className="mt-1 text-xs uppercase tracking-widest text-zinc-500">
-                  {activeMarket ? `${activeMarket.tournament} - ${activeMarket.status}` : "No active market"}
+                  {focusedMarket ? `${focusedMarket.tournament} - ${focusedMarket.status}` : "No active market"}
                 </p>
+                {pinnedMarketId ? (
+                  <p className="mt-1 text-[10px] font-mono text-zinc-600">
+                    TEST MARKET PINNED: {pinnedMarketId}
+                  </p>
+                ) : null}
                 <div className="mt-4 flex items-center gap-3 text-sm text-zinc-400">
                   <span className={`status-badge ${gameState.bomb ? 'bg-orange-500/20 text-orange-500 border border-orange-500/30' : 'bg-blue-500/10 text-blue-500 border border-blue-500/20'}`}>
                     {gameState.bomb ? 'BOMB PLANTED' : 'IN PLAY'}
@@ -300,7 +309,7 @@ export default function CS2Dashboard() {
 
                 {engineMarketsError ? (
                   <div className="text-xs text-red-400">{engineMarketsError}</div>
-                ) : engineMarkets.length > 0 ? engineMarkets.map((item) => (
+                ) : visibleMarkets.length > 0 ? visibleMarkets.map((item) => (
                   <div key={item.market_id} className="flex justify-between items-center bg-black/40 p-3 rounded border border-zinc-800/50">
                     <div>
                       <div className="text-[10px] text-zinc-500 font-bold uppercase">{item.tournament}</div>

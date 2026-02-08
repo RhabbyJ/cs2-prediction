@@ -305,6 +305,10 @@ func isScoreAnomalous(marketID string, state GameState) bool {
 }
 
 func suspendMarket(marketID string, reason string) {
+	if meta, ok := marketRegistry.GetMarket(marketID); ok && meta.Status == "settled" {
+		return
+	}
+
 	ob := marketManager.GetOrderBook(marketID)
 	ob.SuspendTrading()
 	marketRegistry.UpdateMarketStatus(marketID, "suspended")
@@ -323,6 +327,10 @@ func suspendMarket(marketID string, reason string) {
 }
 
 func resumeMarket(marketID string, reason string) {
+	if meta, ok := marketRegistry.GetMarket(marketID); ok && meta.Status == "settled" {
+		return
+	}
+
 	ob := marketManager.GetOrderBook(marketID)
 	ob.ResumeTrading()
 	marketRegistry.UpdateMarketStatus(marketID, "active")
