@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"cs2-prediction-engine/internal/audit"
@@ -111,20 +112,35 @@ type MarketHealthState struct {
 	HealthyStreak     int
 }
 
+type OrderRecord struct {
+	Order             engine.Order
+	ReservedRemaining int64
+}
+
 var (
 	hub              *Hub
 	marketManager    *engine.MarketManager
 	marketRegistry   *engine.MarketRegistry
+	ledger           *engine.Ledger
 	buffer           *engine.FairnessBuffer
 	auditLog         *audit.VeritasChain
 	marketHealthByID = map[string]*MarketHealthState{}
+	orderRecords     = map[uint64]*OrderRecord{}
+	orderMu          sync.Mutex
+	nextOrderID      uint64
 	stateMu          sync.Mutex
+)
+
+const (
+	defaultUserID         = "demo_user_1"
+	defaultInitialBalance = int64(1000000) // 10,000 IFC with 2 implied decimals
 )
 
 func main() {
 	hub = NewHub()
 	marketManager = engine.NewMarketManager()
 	marketRegistry = engine.NewMarketRegistry()
+	ledger = engine.NewLedger()
 	buffer = engine.NewFairnessBuffer(3 * time.Second)
 	auditLog = audit.NewVeritasChain()
 
@@ -134,6 +150,7 @@ func main() {
 	http.HandleFunc("/ws", handleWebSocket)
 	http.HandleFunc("/markets", handleMarkets)
 	http.HandleFunc("/markets/", handleMarketByID)
+	http.HandleFunc("/users/", handleUserBalance)
 
 	fmt.Println("Information Finance Engine Live on :8080")
 	if err := http.ListenAndServe(":8080", nil); err != nil {
@@ -170,20 +187,38 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 			json.Unmarshal(orderBytes, &order)
 			order.Timestamp = time.Now()
 
-			ob := marketManager.GetOrderBook(order.MarketID)
-			if ob.IsTradingSuspended() {
-				rejectMsg, _ := json.Marshal(map[string]interface{}{
-					"type": "order_rejected",
-					"payload": map[string]interface{}{
-						"market_id": order.MarketID,
-						"reason":    "trading_suspended",
-					},
-				})
-				if err := conn.WriteMessage(websocket.TextMessage, rejectMsg); err != nil {
-					log.Printf("Failed to send order rejection: %v", err)
-				}
+			if order.UserID == "" {
+				order.UserID = defaultUserID
+			}
+			if order.Side != engine.Buy {
+				sendOrderRejected(conn, order.MarketID, "only_buy_orders_supported_in_dummy_ledger")
 				continue
 			}
+			if order.Quantity <= 0 || order.Price <= 0 || order.Price >= 100 {
+				sendOrderRejected(conn, order.MarketID, "invalid_order_payload")
+				continue
+			}
+			if order.ID == 0 {
+				order.ID = atomic.AddUint64(&nextOrderID, 1)
+			}
+
+			ob := marketManager.GetOrderBook(order.MarketID)
+			if ob.IsTradingSuspended() {
+				sendOrderRejected(conn, order.MarketID, "trading_suspended")
+				continue
+			}
+			if meta, ok := marketRegistry.GetMarket(order.MarketID); ok && meta.Status == "settled" {
+				sendOrderRejected(conn, order.MarketID, "market_settled")
+				continue
+			}
+
+			requiredReserve := order.Price * order.Quantity
+			ledger.EnsureUser(order.UserID, defaultInitialBalance)
+			if !ledger.Reserve(order.UserID, requiredReserve) {
+				sendOrderRejected(conn, order.MarketID, "insufficient_balance")
+				continue
+			}
+			storeOrderRecord(order, requiredReserve)
 
 			buffer.Add(&order)
 			fmt.Printf("Order Buffered: %s %s @ %d (Market: %s)\n", order.Side, order.Outcome, order.Price, order.MarketID)
@@ -238,6 +273,7 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 			}
 			if payload.GameState.Phase == "ended" {
 				marketRegistry.UpdateMarketStatus(marketID, "settled")
+				settleMarket(marketID, payload)
 			}
 
 			gameEventMsg, _ := json.Marshal(map[string]interface{}{
@@ -272,6 +308,91 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 			hub.broadcast <- message
 		}
 	}
+}
+
+func sendOrderRejected(conn *websocket.Conn, marketID string, reason string) {
+	rejectMsg, _ := json.Marshal(map[string]interface{}{
+		"type": "order_rejected",
+		"payload": map[string]interface{}{
+			"market_id": marketID,
+			"reason":    reason,
+		},
+	})
+	if err := conn.WriteMessage(websocket.TextMessage, rejectMsg); err != nil {
+		log.Printf("Failed to send order rejection: %v", err)
+	}
+}
+
+func storeOrderRecord(order engine.Order, reserved int64) {
+	orderMu.Lock()
+	defer orderMu.Unlock()
+	orderRecords[order.ID] = &OrderRecord{
+		Order:             order,
+		ReservedRemaining: reserved,
+	}
+}
+
+func settleMarket(marketID string, payload AdapterSeriesStatePayload) {
+	winner := engine.No
+	winnerLabel := "NO"
+	if payload.GameState.TerroristScore > payload.GameState.CTScore {
+		winner = engine.Yes
+		winnerLabel = "YES"
+	}
+
+	refundOpenReservesForMarket(marketID)
+	results := ledger.SettleMarket(marketID, winner)
+	finalScore := fmt.Sprintf("%d-%d", payload.GameState.TerroristScore, payload.GameState.CTScore)
+	marketRegistry.UpdateSettlement(marketID, winnerLabel, payload.Timestamp, finalScore)
+
+	settlementMsg, _ := json.Marshal(map[string]interface{}{
+		"type": "market_settled",
+		"payload": map[string]interface{}{
+			"market_id":   marketID,
+			"winner":      winnerLabel,
+			"final_score": finalScore,
+			"settled_at":  payload.Timestamp,
+			"payouts":     results,
+		},
+	})
+	hub.broadcast <- settlementMsg
+}
+
+func refundOpenReservesForMarket(marketID string) {
+	orderMu.Lock()
+	defer orderMu.Unlock()
+
+	for _, record := range orderRecords {
+		if record.Order.MarketID != marketID || record.ReservedRemaining <= 0 {
+			continue
+		}
+		ledger.ReleaseReserved(record.Order.UserID, record.ReservedRemaining)
+		record.ReservedRemaining = 0
+	}
+}
+
+func applyMatchAccounting(marketID string, match engine.Match) {
+	orderMu.Lock()
+	defer orderMu.Unlock()
+
+	applyForOrder := func(orderID uint64) {
+		record, ok := orderRecords[orderID]
+		if !ok {
+			return
+		}
+		cost := match.Price * match.Quantity
+		if cost > record.ReservedRemaining {
+			cost = record.ReservedRemaining
+		}
+		if cost > 0 {
+			ledger.MoveReservedToSpent(record.Order.UserID, cost)
+			record.ReservedRemaining -= cost
+		}
+		ledger.AddFill(record.Order.UserID, marketID, record.Order.Outcome, match.Quantity, cost)
+	}
+
+	applyForOrder(match.MakerOrderID)
+	applyForOrder(match.TakerOrderID)
 }
 
 func isScoreAnomalous(marketID string, state GameState) bool {
@@ -419,6 +540,35 @@ func handleMarketByID(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func handleUserBalance(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Expected: /users/{userID}/balance
+	path := strings.TrimPrefix(r.URL.Path, "/users/")
+	parts := strings.Split(path, "/")
+	if len(parts) != 2 || parts[0] == "" || parts[1] != "balance" {
+		http.Error(w, "invalid user balance path", http.StatusBadRequest)
+		return
+	}
+
+	account, ok := ledger.GetAccount(parts[0])
+	if !ok {
+		http.Error(w, "user not found", http.StatusNotFound)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(map[string]interface{}{
+		"account": account,
+	}); err != nil {
+		http.Error(w, "failed to encode response", http.StatusInternalServerError)
+		return
+	}
+}
+
 func processBuffer() {
 	for {
 		batch := buffer.GetReadyOrders()
@@ -428,6 +578,7 @@ func processBuffer() {
 
 			for _, m := range matches {
 				auditLog.LogMatch(m)
+				applyMatchAccounting(order.MarketID, m)
 
 				matchMsg, _ := json.Marshal(map[string]interface{}{
 					"type":    "match_occurred",

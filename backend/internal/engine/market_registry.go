@@ -11,6 +11,9 @@ type MarketMetadata struct {
 	StartTime  string           `json:"start_time,omitempty"`
 	Status     string           `json:"status"`
 	GameState  *MarketGameState `json:"game_state,omitempty"`
+	Winner     string           `json:"winner,omitempty"`
+	SettledAt  string           `json:"settled_at,omitempty"`
+	FinalScore string           `json:"final_score,omitempty"`
 }
 
 type MarketGameState struct {
@@ -63,6 +66,21 @@ func (mr *MarketRegistry) UpdateMarketGameState(marketID string, gameState Marke
 		return false
 	}
 	meta.GameState = &gameState
+	mr.markets[marketID] = meta
+	return true
+}
+
+func (mr *MarketRegistry) UpdateSettlement(marketID string, winner string, settledAt string, finalScore string) bool {
+	mr.mu.Lock()
+	defer mr.mu.Unlock()
+
+	meta, ok := mr.markets[marketID]
+	if !ok {
+		return false
+	}
+	meta.Winner = winner
+	meta.SettledAt = settledAt
+	meta.FinalScore = finalScore
 	mr.markets[marketID] = meta
 	return true
 }
