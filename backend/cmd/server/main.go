@@ -141,6 +141,7 @@ func main() {
 	marketManager = engine.NewMarketManager()
 	marketRegistry = engine.NewMarketRegistry()
 	ledger = engine.NewLedger()
+	ledger.EnsureUser(defaultUserID, defaultInitialBalance)
 	buffer = engine.NewFairnessBuffer(3 * time.Second)
 	auditLog = audit.NewVeritasChain()
 
@@ -190,10 +191,6 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 			if order.UserID == "" {
 				order.UserID = defaultUserID
 			}
-			if order.Side != engine.Buy {
-				sendOrderRejected(conn, order.MarketID, "only_buy_orders_supported_in_dummy_ledger")
-				continue
-			}
 			if order.Quantity <= 0 || order.Price <= 0 || order.Price >= 100 {
 				sendOrderRejected(conn, order.MarketID, "invalid_order_payload")
 				continue
@@ -212,7 +209,7 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 				continue
 			}
 
-			requiredReserve := order.Price * order.Quantity
+			requiredReserve := requiredReserveForOrder(order)
 			ledger.EnsureUser(order.UserID, defaultInitialBalance)
 			if !ledger.Reserve(order.UserID, requiredReserve) {
 				sendOrderRejected(conn, order.MarketID, "insufficient_balance")
@@ -380,7 +377,7 @@ func applyMatchAccounting(marketID string, match engine.Match) {
 		if !ok {
 			return
 		}
-		cost := match.Price * match.Quantity
+		effectiveOutcome, cost := effectiveOutcomeAndCost(record.Order, match.Price, match.Quantity)
 		if cost > record.ReservedRemaining {
 			cost = record.ReservedRemaining
 		}
@@ -388,11 +385,34 @@ func applyMatchAccounting(marketID string, match engine.Match) {
 			ledger.MoveReservedToSpent(record.Order.UserID, cost)
 			record.ReservedRemaining -= cost
 		}
-		ledger.AddFill(record.Order.UserID, marketID, record.Order.Outcome, match.Quantity, cost)
+		ledger.AddFill(record.Order.UserID, marketID, effectiveOutcome, match.Quantity, cost)
 	}
 
 	applyForOrder(match.MakerOrderID)
 	applyForOrder(match.TakerOrderID)
+}
+
+func requiredReserveForOrder(order engine.Order) int64 {
+	if order.Side == engine.Buy {
+		return order.Price * order.Quantity
+	}
+	// Selling YES at P is equivalent to long NO at (100-P), and vice-versa.
+	return (100 - order.Price) * order.Quantity
+}
+
+func effectiveOutcomeAndCost(order engine.Order, executionPrice int64, quantity int64) (engine.Outcome, int64) {
+	if order.Side == engine.Buy {
+		return order.Outcome, executionPrice * quantity
+	}
+
+	opp := engine.Yes
+	if order.Outcome == engine.Yes {
+		opp = engine.No
+	}
+	if order.Outcome == engine.No {
+		opp = engine.Yes
+	}
+	return opp, (100 - executionPrice) * quantity
 }
 
 func isScoreAnomalous(marketID string, state GameState) bool {
@@ -546,26 +566,39 @@ func handleUserBalance(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Expected: /users/{userID}/balance
+	// Expected: /users/{userID}/balance or /users/{userID}/positions
 	path := strings.TrimPrefix(r.URL.Path, "/users/")
 	parts := strings.Split(path, "/")
-	if len(parts) != 2 || parts[0] == "" || parts[1] != "balance" {
-		http.Error(w, "invalid user balance path", http.StatusBadRequest)
+	if len(parts) != 2 || parts[0] == "" {
+		http.Error(w, "invalid user resource path", http.StatusBadRequest)
 		return
 	}
 
-	account, ok := ledger.GetAccount(parts[0])
-	if !ok {
-		http.Error(w, "user not found", http.StatusNotFound)
-		return
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(map[string]interface{}{
-		"account": account,
-	}); err != nil {
-		http.Error(w, "failed to encode response", http.StatusInternalServerError)
-		return
+	switch parts[1] {
+	case "balance":
+		account, ok := ledger.GetAccount(parts[0])
+		if !ok {
+			http.Error(w, "user not found", http.StatusNotFound)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		if err := json.NewEncoder(w).Encode(map[string]interface{}{
+			"account": account,
+		}); err != nil {
+			http.Error(w, "failed to encode response", http.StatusInternalServerError)
+			return
+		}
+	case "positions":
+		positions := ledger.GetPositions(parts[0])
+		w.Header().Set("Content-Type", "application/json")
+		if err := json.NewEncoder(w).Encode(map[string]interface{}{
+			"positions": positions,
+		}); err != nil {
+			http.Error(w, "failed to encode response", http.StatusInternalServerError)
+			return
+		}
+	default:
+		http.Error(w, "unknown user resource", http.StatusBadRequest)
 	}
 }
 

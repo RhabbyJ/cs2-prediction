@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Globe, Shield } from "lucide-react";
 import {
   getTournamentQuery,
@@ -23,6 +23,9 @@ type EngineMarket = {
   teams: string[];
   start_time?: string;
   status: "active" | "suspended" | "settled";
+  winner?: string;
+  final_score?: string;
+  settled_at?: string;
   game_state?: {
     map?: string;
     round?: number;
@@ -35,10 +38,36 @@ type EngineMarket = {
   };
 };
 
+type Account = {
+  user_id: string;
+  available: number;
+  reserved: number;
+  spent: number;
+  realized_pnl: number;
+};
+
+type Position = {
+  market_id: string;
+  yes_shares: number;
+  no_shares: number;
+  yes_cost: number;
+  no_cost: number;
+  settled: boolean;
+};
+
+type ActivityEvent = {
+  id: string;
+  type: string;
+  message: string;
+  at: string;
+};
+
 export default function CS2Dashboard() {
   const pinnedMarketId = process.env.NEXT_PUBLIC_TEST_MARKET_ID?.trim();
   const pinnedSeriesId =
     pinnedMarketId?.match(/^series_(.+)_winner$/)?.[1];
+  const userId = "demo_user_1";
+  const wsRef = useRef<WebSocket | null>(null);
   const [gameState, setGameState] = useState({
     round: 14,
     t_score: 8,
@@ -58,10 +87,31 @@ export default function CS2Dashboard() {
   const [explorerLoading, setExplorerLoading] = useState(false);
   const [engineMarkets, setEngineMarkets] = useState<EngineMarket[]>([]);
   const [engineMarketsError, setEngineMarketsError] = useState<string | null>(null);
+  const [account, setAccount] = useState<Account | null>(null);
+  const [positions, setPositions] = useState<Position[]>([]);
+  const [tradingError, setTradingError] = useState<string | null>(null);
+  const [orderSide, setOrderSide] = useState<"BUY" | "SELL">("BUY");
+  const [orderOutcome, setOrderOutcome] = useState<"YES" | "NO">("YES");
+  const [orderPrice, setOrderPrice] = useState(60);
+  const [orderQuantity, setOrderQuantity] = useState(10);
+  const [submittingOrder, setSubmittingOrder] = useState(false);
+  const [activity, setActivity] = useState<ActivityEvent[]>([]);
 
   useEffect(() => {
-    let ws: WebSocket | null = null;
     let reconnectTimeout: any;
+    let closedByCleanup = false;
+
+    const pushActivity = (type: string, message: string) => {
+      setActivity((prev) => [
+        {
+          id: crypto.randomUUID(),
+          type,
+          message,
+          at: new Date().toISOString(),
+        },
+        ...prev.slice(0, 19),
+      ]);
+    };
 
     const connect = () => {
       try {
@@ -73,7 +123,8 @@ export default function CS2Dashboard() {
           ? engineUrl.replace("ws:", "wss:") 
           : engineUrl;
 
-        ws = new WebSocket(secureUrl);
+        const ws = new WebSocket(secureUrl);
+        wsRef.current = ws;
         
         ws.onopen = () => setConnectionStatus("OPTIMAL");
         ws.onerror = () => setConnectionStatus("FAILED");
@@ -96,12 +147,28 @@ export default function CS2Dashboard() {
             if (data.payload.discovery) {
               setGridData(data.payload.discovery);
             }
+          } else if (data.type === "order_rejected") {
+            setTradingError(data?.payload?.reason || "order_rejected");
+            pushActivity("ORDER_REJECTED", `${data?.payload?.reason || "Order rejected"} (${data?.payload?.market_id || "unknown"})`);
+          } else if (data.type === "match_occurred") {
+            pushActivity(
+              "MATCH",
+              `Matched qty=${data?.payload?.quantity} @ ${data?.payload?.price}`
+            );
+          } else if (data.type === "market_settled") {
+            pushActivity(
+              "SETTLED",
+              `${data?.payload?.market_id} winner=${data?.payload?.winner} score=${data?.payload?.final_score}`
+            );
           }
         };
 
         ws.onclose = () => {
+          wsRef.current = null;
           setConnectionStatus("DISCONNECTED");
-          reconnectTimeout = setTimeout(connect, 5000);
+          if (!closedByCleanup) {
+            reconnectTimeout = setTimeout(connect, 5000);
+          }
         };
       } catch (err) {
         console.error("WS Connection Error:", err);
@@ -112,10 +179,47 @@ export default function CS2Dashboard() {
     connect();
 
     return () => {
-      ws?.close();
+      closedByCleanup = true;
+      wsRef.current?.close();
+      wsRef.current = null;
       clearTimeout(reconnectTimeout);
     };
-  }, []);
+  }, [pinnedSeriesId]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadUserData = async () => {
+      try {
+        const [balanceRes, positionsRes] = await Promise.all([
+          fetch(`/api/engine/users/${userId}/balance`, { cache: "no-store" }),
+          fetch(`/api/engine/users/${userId}/positions`, { cache: "no-store" }),
+        ]);
+        const [balanceData, positionsData] = await Promise.all([
+          balanceRes.json(),
+          positionsRes.json(),
+        ]);
+
+        if (!cancelled) {
+          if (balanceRes.ok) {
+            setAccount((balanceData?.account || null) as Account | null);
+          }
+          if (positionsRes.ok) {
+            setPositions((positionsData?.positions || []) as Position[]);
+          }
+        }
+      } catch {
+        // Non-blocking for dashboard flow.
+      }
+    };
+
+    void loadUserData();
+    const interval = setInterval(loadUserData, 8000);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [userId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -235,6 +339,50 @@ export default function CS2Dashboard() {
     }
   };
 
+  const submitOrder = async () => {
+    if (!focusedMarket) {
+      setTradingError("No market selected");
+      return;
+    }
+    const ws = wsRef.current;
+    if (!ws || ws.readyState !== WebSocket.OPEN) {
+      setTradingError("WebSocket not connected");
+      return;
+    }
+
+    setSubmittingOrder(true);
+    setTradingError(null);
+
+    try {
+      ws.send(
+        JSON.stringify({
+          type: "place_order",
+          payload: {
+            market_id: focusedMarket.market_id,
+            user_id: userId,
+            side: orderSide,
+            outcome: orderOutcome,
+            price: Number(orderPrice),
+            quantity: Number(orderQuantity),
+          },
+        })
+      );
+      setActivity((prev) => [
+        {
+          id: crypto.randomUUID(),
+          type: "ORDER_SUBMITTED",
+          message: `${orderSide} ${orderOutcome} qty=${orderQuantity} @ ${orderPrice}`,
+          at: new Date().toISOString(),
+        },
+        ...prev.slice(0, 19),
+      ]);
+    } catch {
+      setTradingError("Failed to submit order");
+    } finally {
+      setSubmittingOrder(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-[#0a0a0a] text-white p-4 md:p-8">
       <div className="max-w-[1400px] mx-auto space-y-6">
@@ -275,6 +423,11 @@ export default function CS2Dashboard() {
                 <p className="mt-1 text-xs uppercase tracking-widest text-zinc-500">
                   {focusedMarket ? `${focusedMarket.tournament} - ${focusedMarket.status}` : "No active market"}
                 </p>
+                {focusedMarket?.status === "settled" ? (
+                  <p className="mt-1 text-[11px] font-mono text-emerald-400">
+                    Winner: {focusedMarket.winner || "N/A"} | Final: {focusedMarket.final_score || "N/A"}
+                  </p>
+                ) : null}
                 {pinnedMarketId ? (
                   <p className="mt-1 text-[10px] font-mono text-zinc-600">
                     TEST MARKET PINNED: {pinnedMarketId}
@@ -303,6 +456,96 @@ export default function CS2Dashboard() {
                   </div>
                   <p className="text-[10px] font-bold text-zinc-500 uppercase mt-1">Round</p>
                 </div>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+              <div className="lg:col-span-2 bg-[#141414] border border-[#262626] rounded-xl p-5">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-xs font-black uppercase tracking-widest text-zinc-500">Order Ticket</h3>
+                  <span className="text-[10px] font-mono text-zinc-600">{focusedMarket?.market_id || "no-market"}</span>
+                </div>
+                <div className="mt-4 grid grid-cols-2 md:grid-cols-4 gap-3">
+                  <select
+                    className="bg-black/40 border border-zinc-800 rounded px-3 py-2 text-sm"
+                    value={orderSide}
+                    onChange={(e) => setOrderSide(e.target.value as "BUY" | "SELL")}
+                  >
+                    <option value="BUY">BUY</option>
+                    <option value="SELL">SELL</option>
+                  </select>
+                  <select
+                    className="bg-black/40 border border-zinc-800 rounded px-3 py-2 text-sm"
+                    value={orderOutcome}
+                    onChange={(e) => setOrderOutcome(e.target.value as "YES" | "NO")}
+                  >
+                    <option value="YES">YES</option>
+                    <option value="NO">NO</option>
+                  </select>
+                  <input
+                    className="bg-black/40 border border-zinc-800 rounded px-3 py-2 text-sm"
+                    type="number"
+                    min={1}
+                    max={99}
+                    value={orderPrice}
+                    onChange={(e) => setOrderPrice(Number(e.target.value))}
+                    placeholder="Price (1-99)"
+                  />
+                  <input
+                    className="bg-black/40 border border-zinc-800 rounded px-3 py-2 text-sm"
+                    type="number"
+                    min={1}
+                    value={orderQuantity}
+                    onChange={(e) => setOrderQuantity(Number(e.target.value))}
+                    placeholder="Qty"
+                  />
+                </div>
+                <div className="mt-4 flex items-center gap-3">
+                  <button
+                    className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded text-xs font-black uppercase tracking-widest disabled:opacity-50"
+                    onClick={submitOrder}
+                    disabled={submittingOrder || !focusedMarket}
+                  >
+                    {submittingOrder ? "Submitting..." : "Submit Order"}
+                  </button>
+                  {tradingError ? <span className="text-xs text-red-400">{tradingError}</span> : null}
+                </div>
+              </div>
+
+              <div className="bg-[#141414] border border-[#262626] rounded-xl p-5">
+                <h3 className="text-xs font-black uppercase tracking-widest text-zinc-500">Account ({userId})</h3>
+                <div className="mt-4 space-y-2 text-sm">
+                  <div className="flex justify-between"><span className="text-zinc-500">Available</span><span>{account?.available ?? "-"}</span></div>
+                  <div className="flex justify-between"><span className="text-zinc-500">Reserved</span><span>{account?.reserved ?? "-"}</span></div>
+                  <div className="flex justify-between"><span className="text-zinc-500">Spent</span><span>{account?.spent ?? "-"}</span></div>
+                  <div className="flex justify-between"><span className="text-zinc-500">Realized PnL</span><span>{account?.realized_pnl ?? "-"}</span></div>
+                </div>
+                <div className="mt-4 border-t border-zinc-800 pt-3">
+                  <div className="text-[10px] uppercase tracking-widest text-zinc-500 mb-2">Positions ({positions.length})</div>
+                  <div className="max-h-28 overflow-auto space-y-1 text-[11px]">
+                    {positions.slice(0, 6).map((p) => (
+                      <div key={p.market_id} className="flex justify-between text-zinc-300">
+                        <span className="truncate mr-2">{p.market_id}</span>
+                        <span>YES {p.yes_shares} / NO {p.no_shares}</span>
+                      </div>
+                    ))}
+                    {positions.length === 0 ? <div className="text-zinc-600">No positions yet</div> : null}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="bg-[#141414] border border-[#262626] rounded-xl p-5">
+              <h3 className="text-xs font-black uppercase tracking-widest text-zinc-500">Activity</h3>
+              <div className="mt-3 max-h-40 overflow-auto space-y-2">
+                {activity.map((item) => (
+                  <div key={item.id} className="text-[11px] font-mono text-zinc-300 bg-black/30 border border-zinc-800 rounded px-3 py-2">
+                    <span className="text-blue-400">{item.type}</span>{" "}
+                    <span>{item.message}</span>
+                    <span className="text-zinc-600 ml-2">{new Date(item.at).toLocaleTimeString()}</span>
+                  </div>
+                ))}
+                {activity.length === 0 ? <div className="text-xs text-zinc-600">No activity yet</div> : null}
               </div>
             </div>
 

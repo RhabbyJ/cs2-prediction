@@ -139,6 +139,22 @@ func (l *Ledger) GetAccount(userID string) (Account, bool) {
 	return *acc, true
 }
 
+func (l *Ledger) GetPositions(userID string) []MarketPosition {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
+	userPositions, ok := l.positionsByUser[userID]
+	if !ok {
+		return []MarketPosition{}
+	}
+
+	out := make([]MarketPosition, 0, len(userPositions))
+	for _, p := range userPositions {
+		out = append(out, *p)
+	}
+	return out
+}
+
 func (l *Ledger) SettleMarket(marketID string, winner Outcome) []SettlementResult {
 	l.mu.Lock()
 	defer l.mu.Unlock()
